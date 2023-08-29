@@ -27,7 +27,7 @@ def _select_menu(self: App, dict_selected: dict):
 
     self.dict_selected = dict_selected
 
-    self.clear_left()
+    self.clear("listbox left")
 
     for i in dict_selected:
         self.listbox_left.insert(END, i)

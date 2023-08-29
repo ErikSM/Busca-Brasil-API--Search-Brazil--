@@ -12,6 +12,12 @@ class App:
         self.strings = strings
         self.dict_selected = None
 
+        self.api_address = None
+        self.need_complement = None
+
+        self.field_toplevel = None
+        self.captured_to_toplevel = None
+
         self.window = Tk()
         self.window.title('Busca Brasil')
         self.window.resizable(True, True)
@@ -21,13 +27,20 @@ class App:
                                 bg=self.color['purple'], fg=self.color['white'])
         self.label_left.grid(row=0, column=1)
 
-        self.listbox_left = Listbox(self.window, height=22, width=60, bd=10,
-                                    bg=self.color['grey'], fg=self.color['white'])
+        self.entry = Entry(self.window, width=61, bd=10, state=DISABLED,
+                           bg=self.color['grey'], fg=self.color['white'])
+        self.entry.grid(row=1, column=1)
 
-        self.listbox_left.grid(row=1, rowspan=10, column=1)
+        self.listbox_left = Listbox(self.window, height=18, width=61, bd=10,
+                                    bg=self.color['grey'], fg=self.color['white'])
+        self.listbox_left.grid(row=2, rowspan=10, column=1)
+        y_axis = Scrollbar(self.window, orient=VERTICAL, command=self.listbox_left.yview)
+        y_axis.grid(row=1, rowspan=10, column=0, sticky=N + S)
+        self.listbox_left.config(yscrollcommand=y_axis.set)
 
         self.botao = Button(self.window, text='Select item', command=self.search)
         self.botao.grid(row=1, column=2)
+
         cont = 2
         while cont < 10:
             Button(self.window, text=(' ' * 20), state=DISABLED).grid(row=cont, column=2)
@@ -37,40 +50,101 @@ class App:
                                  bg=self.color['purple'], fg=self.color['white'])
         self.label_right.grid(row=0, column=3)
 
-        self.listbox_right = Listbox(self.window, height=22, width=60, bd=10,
+        self.listbox_right = Listbox(self.window, height=22, width=61, bd=10,
                                      bg=self.color['grey'], fg=self.color['white'])
         self.listbox_right.grid(row=1, rowspan=10, column=3)
+        y_axis = Scrollbar(self.window, orient=VERTICAL, command=self.listbox_right.yview)
+        y_axis.grid(row=1, rowspan=10, column=4, sticky=N + S)
+        self.listbox_right.config(yscrollcommand=y_axis.set)
 
-        self.text = Text(self.window, height=10, width=115, bd=12,
+        self.text = Text(self.window, height=10, width=120, bd=12,
                          bg=self.color['grey'], fg=self.color['white'])
-        self.text.grid(row=12, column=1, columnspan=3)
-
+        self.text.grid(row=12, column=1, columnspan=4)
         y_axis = Scrollbar(self.window, orient=VERTICAL, command=self.text.yview)
         y_axis.grid(row=12, column=0, sticky=N + S)
         self.text.config(yscrollcommand=y_axis.set)
 
-    def clear_left(self):
-        self.listbox_left.delete(0, END)
+    def clear(self, text_field="all"):
+        self.entry.config(state=NORMAL)
 
-    def clear_right(self):
-        self.listbox_right.delete(0, END)
+        if text_field == "all":
+            self.text.delete(1.0, END)
+            self.listbox_right.delete(0, END)
+            self.listbox_left.delete(0, END)
+            self.entry.delete(0, END)
+        elif text_field == "listbox left":
+            self.listbox_left.delete(0, END)
+        elif text_field == "listbox right":
+            self.listbox_right.delete(0, END)
+        elif text_field == "text":
+            self.text.delete(1.0, END)
+        elif text_field == "entry":
+            self.entry.delete(0, END)
+        else:
+            pass
 
-    def clear_text(self):
-        self.text.delete(1.0, END)
+        self.entry.config(state=DISABLED)
 
-    def print_information(self, info):
-        self.text.insert(END, info)
+    def print_text(self, text):
+        self.text.insert(END, text)
+
+    def print_entry(self, text):
+        self.entry.config(state=NORMAL)
+        self.entry.insert(END, text)
+        self.entry.config(state=DISABLED)
 
     def search(self):
         selected = self.listbox_left.get(ANCHOR)
 
-        if not self.dict_selected[selected][1]:
-
-            self.clear_right()
-
-            dict_open = open_dict(self.dict_selected[selected][0])
-            for i in dict_open:
-                self.listbox_right.insert(END, i)
-
+        try:
+            self.need_complement = self.dict_selected[selected][1]
+            self.api_address = self.dict_selected[selected][0]
+        except Exception as ex:
+            self.listbox_right.insert(END, f'{ex}\nNao disponivel')
         else:
-            self.listbox_right.insert(END, 'Nao disponivel')
+            if not self.need_complement:
+
+                self.clear("entry")
+                self.print_entry(f'../{selected}>')
+
+                self.clear("listbox right")
+                dict_opened = open_dict(self.api_address)
+                print(dict_opened)
+                for i in dict_opened:
+                    self.listbox_right.insert(END, i)
+
+            else:
+                self.clear("entry")
+                self.print_entry(f'../{selected}>')
+                self._quick_window(selected)
+
+    def _quick_window(self, search):
+
+        self.field_toplevel = Toplevel()
+        self.field_toplevel.title(f"{search}")
+        self.field_toplevel.resizable(False, False)
+        self.field_toplevel.geometry("400x85+300+250")
+        self.field_toplevel.config(bg=self.color['grey'])
+
+        Label(self.field_toplevel, text=f"Digite - ({search}):",
+              bg=self.color['grey'], fg=self.color['white']).pack(side=LEFT)
+
+        entry = Entry(self.field_toplevel)
+        entry.pack(side=LEFT)
+
+        Button(self.field_toplevel, text="OK", command=lambda: self._get_to_quick_window(entry)).pack(side=LEFT)
+
+        self.field_toplevel.mainloop()
+
+    def _get_to_quick_window(self, entry: Entry):
+        self.captured_to_toplevel = entry.get()
+
+        self.print_entry(self.captured_to_toplevel)
+
+        self.clear("listbox right")
+        dict_opened = open_dict(self.api_address, self.captured_to_toplevel)
+        print(dict_opened)
+        for i in dict_opened:
+            self.listbox_right.insert(END, i)
+
+        self.field_toplevel.destroy()

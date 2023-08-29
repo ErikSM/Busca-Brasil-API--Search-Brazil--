@@ -13,7 +13,7 @@ class Start(App):
 
         create_menus(self)
 
-        self.print_information(general_information)
+        self.print_text(general_information)
 
         self.window.mainloop()
 
