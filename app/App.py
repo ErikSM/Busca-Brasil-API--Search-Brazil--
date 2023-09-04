@@ -65,6 +65,7 @@ class App:
         self.text.config(yscrollcommand=y_axis.set)
 
     def clear(self, text_field="all"):
+
         self.entry.config(state=NORMAL)
 
         if text_field == "all":
@@ -102,6 +103,9 @@ class App:
         except Exception as ex:
             self.listbox_right.insert(END, f'{ex}\nNao disponivel')
         else:
+
+            self.clear("text")
+
             if not self.need_complement:
 
                 self.clear("entry")
@@ -109,9 +113,12 @@ class App:
 
                 self.clear("listbox right")
                 dict_opened = open_dict(self.api_address)
-                print(dict_opened)
+                print(type(dict_opened))
                 for i in dict_opened:
                     self.listbox_right.insert(END, i)
+
+                    self.print_text(i)
+                    self.print_text('\n\n')
 
             else:
                 self.clear("entry")
@@ -132,7 +139,8 @@ class App:
         entry = Entry(self.field_toplevel)
         entry.pack(side=LEFT)
 
-        Button(self.field_toplevel, text="OK", command=lambda: self._get_to_quick_window(entry)).pack(side=LEFT)
+        Button(self.field_toplevel, text="OK",
+               command=lambda: self._get_to_quick_window(entry)).pack(side=LEFT)
 
         self.field_toplevel.mainloop()
 
@@ -143,8 +151,12 @@ class App:
 
         self.clear("listbox right")
         dict_opened = open_dict(self.api_address, self.captured_to_toplevel)
-        print(dict_opened)
+        print(type(dict_opened))
+
         for i in dict_opened:
             self.listbox_right.insert(END, i)
+            if type(dict_opened) == dict:
+                self.listbox_right.insert(END, dict_opened[i])
+            self.listbox_right.insert(END, '\n')
 
         self.field_toplevel.destroy()

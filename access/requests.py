@@ -7,5 +7,3 @@ def open_dict(address, page=""):
     dictionary_required = json.loads(request.text)
 
     return dictionary_required
-
-
