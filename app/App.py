@@ -10,10 +10,12 @@ class App:
 
         self.color = colors
         self.strings = strings
+
         self.dict_selected = None
 
         self.api_address = None
-        self.need_complement = None
+        self.api_need_complement = None
+        self.api_striing_about = None
 
         self.field_toplevel = None
         self.captured_to_toplevel = None
@@ -27,11 +29,11 @@ class App:
                                 bg=self.color['purple'], fg=self.color['white'])
         self.label_left.grid(row=0, column=1)
 
-        self.entry = Entry(self.window, width=61, bd=10, state=DISABLED,
+        self.entry = Entry(self.window, width=41, bd=10, state=DISABLED,
                            bg=self.color['grey'], fg=self.color['white'])
         self.entry.grid(row=1, column=1)
 
-        self.listbox_left = Listbox(self.window, height=18, width=61, bd=10,
+        self.listbox_left = Listbox(self.window, height=18, width=41, bd=10,
                                     bg=self.color['grey'], fg=self.color['white'])
         self.listbox_left.grid(row=2, rowspan=10, column=1)
         y_axis = Scrollbar(self.window, orient=VERTICAL, command=self.listbox_left.yview)
@@ -50,19 +52,20 @@ class App:
                                  bg=self.color['purple'], fg=self.color['white'])
         self.label_right.grid(row=0, column=3)
 
-        self.listbox_right = Listbox(self.window, height=22, width=61, bd=10,
+        self.listbox_right = Listbox(self.window, height=22, width=111, bd=10,
                                      bg=self.color['grey'], fg=self.color['white'])
         self.listbox_right.grid(row=1, rowspan=10, column=3)
         y_axis = Scrollbar(self.window, orient=VERTICAL, command=self.listbox_right.yview)
         y_axis.grid(row=1, rowspan=10, column=4, sticky=N + S)
         self.listbox_right.config(yscrollcommand=y_axis.set)
 
-        self.text = Text(self.window, height=10, width=120, bd=12,
+        self.text = Text(self.window, height=10, width=145, bd=12,
                          bg=self.color['grey'], fg=self.color['white'])
         self.text.grid(row=12, column=1, columnspan=4)
         y_axis = Scrollbar(self.window, orient=VERTICAL, command=self.text.yview)
         y_axis.grid(row=12, column=0, sticky=N + S)
         self.text.config(yscrollcommand=y_axis.set)
+
 
     def clear(self, text_field="all"):
 
@@ -98,15 +101,18 @@ class App:
         selected = self.listbox_left.get(ANCHOR)
 
         try:
-            self.need_complement = self.dict_selected[selected][1]
+            self.api_striing_about = self.dict_selected[selected][2]
+            self.api_need_complement = self.dict_selected[selected][1]
             self.api_address = self.dict_selected[selected][0]
         except Exception as ex:
             self.listbox_right.insert(END, f'{ex}\nNao disponivel')
         else:
 
             self.clear("text")
+            self.print_text(self.api_striing_about)
+            self.print_text("\n\n\n")
 
-            if not self.need_complement:
+            if not self.api_need_complement:
 
                 self.clear("entry")
                 self.print_entry(f'../{selected}>')
@@ -116,9 +122,6 @@ class App:
                 print(type(dict_opened))
                 for i in dict_opened:
                     self.listbox_right.insert(END, i)
-
-                    self.print_text(i)
-                    self.print_text('\n\n')
 
             else:
                 self.clear("entry")
