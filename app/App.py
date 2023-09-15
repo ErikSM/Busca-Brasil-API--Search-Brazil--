@@ -15,7 +15,7 @@ class App:
 
         self.api_address = None
         self.api_need_complement = None
-        self.api_striing_about = None
+        self.api_string = None
 
         self.field_toplevel = None
         self.captured_to_toplevel = None
@@ -66,9 +66,7 @@ class App:
         y_axis.grid(row=12, column=0, sticky=N + S)
         self.text.config(yscrollcommand=y_axis.set)
 
-
     def clear(self, text_field="all"):
-
         self.entry.config(state=NORMAL)
 
         if text_field == "all":
@@ -101,7 +99,7 @@ class App:
         selected = self.listbox_left.get(ANCHOR)
 
         try:
-            self.api_striing_about = self.dict_selected[selected][2]
+            self.api_string = self.dict_selected[selected][2]
             self.api_need_complement = self.dict_selected[selected][1]
             self.api_address = self.dict_selected[selected][0]
         except Exception as ex:
@@ -109,7 +107,7 @@ class App:
         else:
 
             self.clear("text")
-            self.print_text(self.api_striing_about)
+            self.print_text(self.api_string)
             self.print_text("\n\n\n")
 
             if not self.api_need_complement:
@@ -129,11 +127,11 @@ class App:
                 self._quick_window(selected)
 
     def _quick_window(self, search):
-
         self.field_toplevel = Toplevel()
+
         self.field_toplevel.title(f"{search}")
         self.field_toplevel.resizable(False, False)
-        self.field_toplevel.geometry("400x85+300+250")
+        self.field_toplevel.geometry("500x85+300+250")
         self.field_toplevel.config(bg=self.color['grey'])
 
         Label(self.field_toplevel, text=f"Digite - ({search}):",
@@ -154,12 +152,18 @@ class App:
 
         self.clear("listbox right")
         dict_opened = open_dict(self.api_address, self.captured_to_toplevel)
-        print(type(dict_opened))
 
         for i in dict_opened:
             self.listbox_right.insert(END, i)
+
             if type(dict_opened) == dict:
-                self.listbox_right.insert(END, dict_opened[i])
+
+                if type(dict_opened[i]) == list:
+                    for j in dict_opened[i]:
+                        self.listbox_right.insert(END, j)
+                else:
+                    self.listbox_right.insert(END, dict_opened[i])
+
             self.listbox_right.insert(END, '\n')
 
         self.field_toplevel.destroy()
