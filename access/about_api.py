@@ -23,13 +23,13 @@ general_information = "\nAcesso programático de informações é algo fundament
                       "- Taxas \n"
 
 about_banks = "Informações sobre sistema bancário: \n" \
-              "* Retorna informações de todos os bancos do Brasil\n"
+              "* Retorna lista de todos os bancos do Brasil\n"
 
 about_banks_specific = "Busca as informações de um especifico banco a partir de um código\n"
 
-about_stockbrokers = "Retorna todas as corretoras nos arquivos da CVM.\n"
+about_stockbrokers = "Retorna lista de todas as corretoras nos arquivos da CVM.\n"
 
-about_stockbroke_specific = "Busca por alguma corretoras especifica nos arquivos da CVM.\n"
+about_stockbroke_specific = "Busca por informacoes de uma corretoras especifica nos arquivos da CVM.\n"
 
 about_cep = "O CEP (Código de Endereçamento Postal) é um sistema de códigos que visa racionalizar \n" \
             "o processo de encaminhamento e entrega de correspondências através da divisão do país \n" \

@@ -103,24 +103,28 @@ class App:
             self.api_need_complement = self.dict_selected[selected][1]
             self.api_address = self.dict_selected[selected][0]
         except Exception as ex:
-            self.listbox_right.insert(END, f'{ex}\nNao disponivel')
-        else:
+            self.clear("text")
+            self.print_text(f"Error:{ex}..\n\n-Item nao selecionado ou invalido")
 
+            self.clear("listbox right")
+            self.listbox_right.insert(END, "Erro de acesso")
+        else:
             self.clear("text")
             self.print_text(self.api_string)
             self.print_text("\n\n\n")
 
             if not self.api_need_complement:
-
                 self.clear("entry")
                 self.print_entry(f'../{selected}>')
-
                 self.clear("listbox right")
-                dict_opened = open_dict(self.api_address)
-                print(type(dict_opened))
-                for i in dict_opened:
-                    self.listbox_right.insert(END, i)
-
+                try:
+                    dict_opened = open_dict(self.api_address)
+                except Exception as ex:
+                    self.clear("text")
+                    self.print_text(ex)
+                else:
+                    for i in dict_opened:
+                        self.listbox_right.insert(END, i)
             else:
                 self.clear("entry")
                 self.print_entry(f'../{selected}>')
@@ -151,19 +155,28 @@ class App:
         self.print_entry(self.captured_to_toplevel)
 
         self.clear("listbox right")
-        dict_opened = open_dict(self.api_address, self.captured_to_toplevel)
 
-        for i in dict_opened:
-            self.listbox_right.insert(END, i)
+        try:
+            dict_opened = open_dict(self.api_address, self.captured_to_toplevel)
+        except Exception as ex:
+            self.clear("text")
+            self.print_text(f'Error:{ex}   \n\n-Em branco ou invalido')
 
-            if type(dict_opened) == dict:
+            self.clear("listbox right")
+            self.listbox_right. insert(END, 'Erro de acesso')
 
-                if type(dict_opened[i]) == list:
-                    for j in dict_opened[i]:
-                        self.listbox_right.insert(END, j)
-                else:
-                    self.listbox_right.insert(END, dict_opened[i])
+            self.field_toplevel.destroy()
+        else:
+            for i in dict_opened:
+                self.listbox_right.insert(END, i)
 
-            self.listbox_right.insert(END, '\n')
+                if type(dict_opened) == dict:
 
-        self.field_toplevel.destroy()
+                    if type(dict_opened[i]) == list:
+                        for j in dict_opened[i]:
+                            self.listbox_right.insert(END, j)
+                    else:
+                        self.listbox_right.insert(END, dict_opened[i])
+
+                self.listbox_right.insert(END, '\n')
+            self.field_toplevel.destroy()
