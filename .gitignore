@@ -1,0 +1,17 @@
+﻿__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Common temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+~$*
+.DS_Store
+Thumbs.db

@@ -52,21 +52,55 @@ class CatalogTests(unittest.TestCase):
 class OpenDictTests(unittest.TestCase):
     @patch("access.requests.requests.get")
     def test_decodes_json_list(self, get):
-        get.return_value = Mock(text='[{"name": "Banco A"}, {"name": "Banco B"}]')
+        get.return_value = Mock(json=Mock(return_value=[{"name": "Banco A"}, {"name": "Banco B"}]))
 
         result = api_requests.open_dict("https://example.test/api/banks")
 
         self.assertEqual(result, [{"name": "Banco A"}, {"name": "Banco B"}])
-        get.assert_called_once_with("https://example.test/api/banks/")
+        get.assert_called_once_with("https://example.test/api/banks", timeout=10)
+
+    @patch("access.requests.requests.get")
+    def test_encodes_path_complement_safely(self, get):
+        get.return_value = Mock(json=Mock(return_value={"ok": True}))
+        api_requests.open_dict("https://example.test/api/banks/", " 01/A B?C ")
+        get.assert_called_once_with("https://example.test/api/banks/01%2FA%20B%3FC", timeout=10)
+
+    @patch("access.requests.requests.get")
+    def test_timeout_is_explicit_and_propagated(self, get):
+        failure = api_requests.requests.exceptions.Timeout("slow")
+        get.side_effect = failure
+        with self.assertRaises(api_requests.requests.exceptions.Timeout) as raised:
+            api_requests.open_dict("https://example.test/api/banks")
+        self.assertIs(raised.exception, failure)
+        get.assert_called_once_with("https://example.test/api/banks", timeout=10)
+
+    @patch("access.requests.requests.get")
+    def test_raises_for_http_error_response(self, get):
+        response = Mock()
+        response.raise_for_status.side_effect = api_requests.requests.exceptions.HTTPError("bad status")
+        get.return_value = response
+        with self.assertRaises(api_requests.requests.exceptions.HTTPError):
+            api_requests.open_dict("https://example.test/api/banks")
+        response.json.assert_not_called()
+
+    @patch("access.requests.requests.get")
+    def test_propagates_invalid_json_failure(self, get):
+        failure = api_requests.requests.exceptions.JSONDecodeError("invalid", "{", 0)
+        response = Mock()
+        response.json.side_effect = failure
+        get.return_value = response
+        with self.assertRaises(api_requests.requests.exceptions.JSONDecodeError) as raised:
+            api_requests.open_dict("https://example.test/api/banks")
+        self.assertIs(raised.exception, failure)
 
     @patch("access.requests.requests.get")
     def test_decodes_json_dictionary_and_appends_page(self, get):
-        get.return_value = Mock(text='{"code": "001", "name": "Banco A"}')
+        get.return_value = Mock(json=Mock(return_value={"code": "001", "name": "Banco A"}))
 
         result = api_requests.open_dict("https://example.test/api/banks", "001")
 
         self.assertEqual(result, {"code": "001", "name": "Banco A"})
-        get.assert_called_once_with("https://example.test/api/banks/001")
+        get.assert_called_once_with("https://example.test/api/banks/001", timeout=10)
 
     @patch("access.requests.requests.get")
     def test_propagates_connection_failure(self, get):
@@ -77,7 +111,7 @@ class OpenDictTests(unittest.TestCase):
             api_requests.open_dict("https://example.test/api/banks")
 
         self.assertIs(raised.exception, failure)
-        get.assert_called_once_with("https://example.test/api/banks/")
+        get.assert_called_once_with("https://example.test/api/banks", timeout=10)
 
 
 if __name__ == "__main__":

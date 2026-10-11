@@ -1,9 +1,13 @@
 import requests
-import json
 
 
 def open_dict(address, page=""):
-    request = requests.get(f"{address}/{page}")
-    dictionary_required = json.loads(request.text)
+    url = address.rstrip("/")
+    if page:
+        url = f"{url}/{requests.utils.quote(str(page).strip().strip('/'), safe='')}"
+
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    dictionary_required = response.json()
 
     return dictionary_required
