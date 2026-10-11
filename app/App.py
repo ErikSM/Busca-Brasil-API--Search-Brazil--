@@ -2,6 +2,7 @@ from tkinter import *
 
 from access.requests import open_dict
 from app.configuration import strings, colors
+from app.input_validation import VALIDATORS
 
 
 class App:
@@ -131,6 +132,7 @@ class App:
                 self._quick_window(selected)
 
     def _quick_window(self, search):
+        self.selected_operation = search
         self.field_toplevel = Toplevel()
 
         self.field_toplevel.title(f"{search}")
@@ -151,6 +153,16 @@ class App:
 
     def _get_to_quick_window(self, entry: Entry):
         self.captured_to_toplevel = entry.get()
+
+        validator = VALIDATORS.get(self.selected_operation)
+        if validator is not None:
+            try:
+                self.captured_to_toplevel = validator(self.captured_to_toplevel)
+            except ValueError as ex:
+                self.clear("text")
+                self.print_text(str(ex))
+                self.field_toplevel.destroy()
+                return
 
         self.print_entry(self.captured_to_toplevel)
 
