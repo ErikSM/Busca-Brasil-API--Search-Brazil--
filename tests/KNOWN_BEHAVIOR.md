@@ -2,6 +2,7 @@
 
 ## Corrigidos nesta etapa
 
+- Busca por CNPJ aceita os 12 primeiros caracteres alfanuméricos ASCII e dois dígitos finais, remove pontos, barras e hífens e converte letras para maiúsculas; ISBN aceita ISBN-10 ou ISBN-13 com ou sem hífens, converte `x` final para `X` e consulta com o valor sem hífens; código bancário aceita de um a três dígitos ASCII e preserva zeros à esquerda. Os validadores são associados aos nomes existentes das operações. Entradas rejeitadas não chamam o cliente HTTP. Não há cálculo de dígitos verificadores.
 - Busca por CEP aceita oito dígitos com ou sem hífen e consulta com o valor normalizado; busca por DDD exige dois dígitos e feriados exigem ano válido com quatro dígitos. Entradas rejeitadas exibem mensagem e não chamam o cliente HTTP.
 
 - `access.requests.open_dict` não acrescenta barra final quando `page` está vazio; complementos são codificados como um segmento seguro de caminho.

@@ -5,7 +5,15 @@ from access import addresses
 from access import requests as api_requests
 from app import menus
 from app.App import App
-from app.input_validation import validate_cep, validate_ddd, validate_holiday_year
+from app.input_validation import (
+    VALIDATORS,
+    validate_bank_code,
+    validate_cep,
+    validate_cnpj,
+    validate_ddd,
+    validate_holiday_year,
+    validate_isbn,
+)
 
 
 class CatalogTests(unittest.TestCase):
@@ -124,6 +132,39 @@ class InputValidationTests(unittest.TestCase):
         self.assertEqual(validate_holiday_year("0001"), "0001")
         self.assertEqual(validate_holiday_year("9999"), "9999")
 
+    def test_cnpj_isbn_and_bank_code_normalization(self):
+        self.assertEqual(validate_cnpj("12.abc.345/01de-35"), "12ABC34501DE35")
+        self.assertEqual(validate_cnpj("12ABC34501DE35"), "12ABC34501DE35")
+        self.assertEqual(validate_isbn("0-306-40615-2"), "0306406152")
+        self.assertEqual(validate_isbn("978-0-306-40615-7"), "9780306406157")
+        self.assertEqual(validate_isbn("0-8044-2957-x"), "080442957X")
+        self.assertEqual(validate_bank_code(" 001 "), "001")
+        self.assertEqual(validate_bank_code("7"), "7")
+
+    def test_cnpj_isbn_and_bank_code_reject_invalid_values(self):
+        cases = (
+            (validate_cnpj, "12.abc.345/01de-3x"),
+            (validate_cnpj, "12.abc.345/01de_35"),
+            (validate_cnpj, "１２ABC34501DE35"),
+            (validate_isbn, "123456789"),
+            (validate_isbn, "123456789X0"),
+            (validate_isbn, "978030640615X"),
+            (validate_isbn, "978030640615"),
+            (validate_bank_code, ""),
+            (validate_bank_code, "1234"),
+            (validate_bank_code, "1a"),
+            (validate_bank_code, "１２"),
+        )
+        for validator, value in cases:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validator(value)
+
+    def test_new_validators_are_registered_under_existing_operation_names(self):
+        self.assertIs(VALIDATORS["Busca por CNPJ"], validate_cnpj)
+        self.assertIs(VALIDATORS["Busca Livro por ISNB"], validate_isbn)
+        self.assertIs(VALIDATORS["Banco por codigo"], validate_bank_code)
+        self.assertNotIn("Corretoras por CNPJ", VALIDATORS)
+
     def test_invalid_values(self):
         cases = (
             (validate_cep, "1234-5678"), (validate_cep, "1234567"),
@@ -137,19 +178,27 @@ class InputValidationTests(unittest.TestCase):
 
     @patch("app.App.open_dict")
     def test_rejected_input_does_not_call_http_client(self, open_dict):
-        app = App.__new__(App)
-        app.selected_operation = "Busca por CEP"
-        app.field_toplevel = Mock()
-        app.clear = Mock()
-        app.print_text = Mock()
-        app.print_entry = Mock()
-        app.listbox_right = Mock()
+        for operation, value in (
+            ("Busca por CEP", "123"),
+            ("Busca por CNPJ", "12ABC34501DE3X"),
+            ("Busca Livro por ISNB", "123456789"),
+            ("Banco por codigo", "1234"),
+        ):
+            with self.subTest(operation=operation):
+                open_dict.reset_mock()
+                app = App.__new__(App)
+                app.selected_operation = operation
+                app.field_toplevel = Mock()
+                app.clear = Mock()
+                app.print_text = Mock()
+                app.print_entry = Mock()
+                app.listbox_right = Mock()
 
-        app._get_to_quick_window(Mock(get=Mock(return_value="123")))
+                app._get_to_quick_window(Mock(get=Mock(return_value=value)))
 
-        open_dict.assert_not_called()
-        app.print_text.assert_called_once()
-        app.field_toplevel.destroy.assert_called_once()
+                open_dict.assert_not_called()
+                app.print_text.assert_called_once()
+                app.field_toplevel.destroy.assert_called_once()
 
 
 if __name__ == "__main__":
