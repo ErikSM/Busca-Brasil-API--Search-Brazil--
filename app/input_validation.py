@@ -70,6 +70,31 @@ def validate_br_domain(value):
     return value
 
 
+def validate_cptec_city(value):
+    if any(unicodedata.category(ch) == "Cc" for ch in value):
+        raise ValueError("Cidade inválida. Informe o nome sem caracteres de controle.")
+
+    value = value.strip()
+    if not value:
+        raise ValueError("Cidade inválida. Informe o nome da cidade.")
+
+    return value
+
+
+def validate_cptec_airport_code(value):
+    value = value.strip()
+    if re.fullmatch(r"[A-Za-z]{4}", value) is None:
+        raise ValueError("Código de aeroporto inválido. Informe quatro letras ASCII.")
+    return value.upper()
+
+
+def validate_cptec_city_code(value):
+    value = value.strip()
+    if re.fullmatch(r"[0-9]+", value) is None or not any(ch != "0" for ch in value):
+        raise ValueError("Código de cidade inválido. Informe um código numérico positivo.")
+    return value
+
+
 VALIDATORS = {
     "Busca por CEP": validate_cep,
     "Busca por DDD": validate_ddd,
@@ -79,4 +104,8 @@ VALIDATORS = {
     "Banco por codigo": validate_bank_code,
     "Corretoras por CNPJ": validate_cnpj,
     "Busca por Dominio BR": validate_br_domain,
+    "CPTEC por cidade": validate_cptec_city,
+    "Clima em aeroportos por codigo": validate_cptec_airport_code,
+    "Clima em cidade por codigo": validate_cptec_city_code,
+    "Onda em cidade por codigo": validate_cptec_city_code,
 }

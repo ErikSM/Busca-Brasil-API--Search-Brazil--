@@ -9,6 +9,9 @@ from app.input_validation import (
     VALIDATORS,
     validate_bank_code,
     validate_br_domain,
+    validate_cptec_airport_code,
+    validate_cptec_city,
+    validate_cptec_city_code,
     validate_cep,
     validate_cnpj,
     validate_ddd,
@@ -165,6 +168,32 @@ class InputValidationTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 validate_br_domain(value)
 
+    def test_cptec_valid_values_and_normalization(self):
+        self.assertEqual(validate_cptec_city("  São José dos Campos  "), "São José dos Campos")
+        self.assertEqual(validate_cptec_city("  Rio  de Janeiro "), "Rio  de Janeiro")
+        self.assertEqual(validate_cptec_airport_code("  sbgr "), "SBGR")
+        self.assertEqual(validate_cptec_airport_code("KJFK"), "KJFK")
+        self.assertEqual(validate_cptec_city_code(" 001 "), "001")
+        self.assertEqual(validate_cptec_city_code("123456789012345"), "123456789012345")
+
+    def test_cptec_rejects_invalid_values(self):
+        for validator, values in (
+            (validate_cptec_city, ("", "   ", "Rio\n de Janeiro", "São\x00Paulo")),
+            (validate_cptec_airport_code, ("", "ABC", "ABCDE", "AB1D", "ÁBCD", "ＡBCD")),
+            (validate_cptec_city_code, ("", "   ", "0", "000", "-1", "+1", "1.0", "١٢")),
+        ):
+            for value in values:
+                with self.subTest(validator=validator.__name__, value=value), self.assertRaises(ValueError):
+                    validator(value)
+
+    def test_cptec_validators_are_registered_and_parameterless_operations_are_not(self):
+        self.assertIs(VALIDATORS["CPTEC por cidade"], validate_cptec_city)
+        self.assertIs(VALIDATORS["Clima em aeroportos por codigo"], validate_cptec_airport_code)
+        self.assertIs(VALIDATORS["Clima em cidade por codigo"], validate_cptec_city_code)
+        self.assertIs(VALIDATORS["Onda em cidade por codigo"], validate_cptec_city_code)
+        self.assertNotIn("Cidades da CPTEC", VALIDATORS)
+        self.assertNotIn("Clima em capitais", VALIDATORS)
+
     def test_cnpj_isbn_and_bank_code_reject_invalid_values(self):
         cases = (
             (validate_cnpj, "12.abc.345/01de-3x"),
@@ -210,6 +239,11 @@ class InputValidationTests(unittest.TestCase):
             ("Banco por codigo", "1234"),
             ("Corretoras por CNPJ", "12ABC34501DE3X"),
             ("Busca por Dominio BR", "https://exemplo.br"),
+            ("CPTEC por cidade", "  \n  "),
+            ("CPTEC por cidade", "Rio\x00Janeiro"),
+            ("Clima em aeroportos por codigo", "AB1D"),
+            ("Clima em cidade por codigo", "0"),
+            ("Onda em cidade por codigo", "１２３"),
         ):
             with self.subTest(operation=operation):
                 open_dict.reset_mock()
@@ -228,6 +262,34 @@ class InputValidationTests(unittest.TestCase):
                 app.print_text.assert_called_once()
                 app.field_toplevel.destroy.assert_called_once()
 
+    def test_cptec_rejects_controls_at_edges(self):
+        for value in ("Rio\n", "\tRio", "Rio\t", "Rio\r"):
+            with self.subTest(value=repr(value)):
+                with self.assertRaises(ValueError):
+                    validate_cptec_city(value)
+
+    @patch("app.App.open_dict")
+    def test_parameterless_cptec_operations_use_search(self, open_dict):
+        for operation in ("Cidades da CPTEC", "Clima em capitais"):
+            with self.subTest(operation=operation):
+                open_dict.reset_mock()
+                open_dict.return_value = ["ok"]
+
+                app = App.__new__(App)
+                app.listbox_left = Mock()
+                app.listbox_left.get.return_value = operation
+                app.dict_selected = addresses.cptec_meteorology
+                app.clear = Mock()
+                app.print_text = Mock()
+                app.print_entry = Mock()
+                app.listbox_right = Mock()
+                app._quick_window = Mock()
+
+                app.search()
+
+                expected_url = addresses.cptec_meteorology[operation][0]
+                open_dict.assert_called_once_with(expected_url)
+                app._quick_window.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()
