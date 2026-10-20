@@ -1,6 +1,7 @@
 """Small input validators for structured operation inputs."""
 
 import re
+import unicodedata
 
 
 def validate_cep(value):
@@ -46,6 +47,29 @@ def validate_bank_code(value):
     return value
 
 
+def validate_br_domain(value):
+    """Validate a conservative .br hostname shape; registration is not checked.
+
+    Unicode letters are accepted for internationalized labels. DNS byte-length,
+    IDNA conversion and BrasilAPI registration/availability are left to the API.
+    """
+    value = value.strip().lower()
+    label = r"[a-z0-9\u0080-\U0010ffff](?:[a-z0-9\u0080-\U0010ffff-]*[a-z0-9\u0080-\U0010ffff])?"
+    invalid_character = any(
+        ch not in ".-"
+        and unicodedata.category(ch)[0] not in ("L", "M")
+        and unicodedata.category(ch) != "Nd"
+        for ch in value
+    )
+    invalid_start = any(
+        part and unicodedata.category(part[0])[0] == "M"
+        for part in value.split(".")
+    )
+    if re.fullmatch(rf"{label}(?:\.{label})*\.br", value) is None or invalid_character or invalid_start:
+        raise ValueError("Domínio .br inválido. Informe apenas um nome de domínio terminado em .br.")
+    return value
+
+
 VALIDATORS = {
     "Busca por CEP": validate_cep,
     "Busca por DDD": validate_ddd,
@@ -53,4 +77,6 @@ VALIDATORS = {
     "Busca por CNPJ": validate_cnpj,
     "Busca Livro por ISNB": validate_isbn,
     "Banco por codigo": validate_bank_code,
+    "Corretoras por CNPJ": validate_cnpj,
+    "Busca por Dominio BR": validate_br_domain,
 }

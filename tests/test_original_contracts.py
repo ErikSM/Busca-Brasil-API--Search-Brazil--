@@ -8,6 +8,7 @@ from app.App import App
 from app.input_validation import (
     VALIDATORS,
     validate_bank_code,
+    validate_br_domain,
     validate_cep,
     validate_cnpj,
     validate_ddd,
@@ -141,6 +142,29 @@ class InputValidationTests(unittest.TestCase):
         self.assertEqual(validate_bank_code(" 001 "), "001")
         self.assertEqual(validate_bank_code("7"), "7")
 
+    def test_brokerage_cnpj_reuses_existing_validator(self):
+        self.assertIs(VALIDATORS["Corretoras por CNPJ"], validate_cnpj)
+        self.assertEqual(VALIDATORS["Corretoras por CNPJ"](" 12.abc.345/01de-35 "), "12ABC34501DE35")
+        with self.assertRaises(ValueError):
+            VALIDATORS["Corretoras por CNPJ"]("12.abc.345/01de-3x")
+
+    def test_br_domain_normalization_and_valid_values(self):
+        self.assertIs(VALIDATORS["Busca por Dominio BR"], validate_br_domain)
+        self.assertEqual(validate_br_domain("  WWW.Exemplo.BR "), "www.exemplo.br")
+        self.assertEqual(validate_br_domain("ação.br"), "ação.br")
+        self.assertEqual(validate_br_domain("xn--ao-6ja.br"), "xn--ao-6ja.br")
+
+    def test_br_domain_rejects_invalid_values(self):
+        for value in (
+            "", "   ", "exemplo", "exemplo.com", "https://exemplo.br",
+            "http://exemplo.br", "exemplo.br/path", "exemplo.br?x=1",
+            "exemplo.br#fragment", ".br", "-exemplo.br", "exemplo-.br",
+            "\U0001f600.br", "\u0080.br", "a\u200d.br", "\u0301a.br",
+            "exemplo..br", "exemplo_br", "exemplo br",
+        ):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_br_domain(value)
+
     def test_cnpj_isbn_and_bank_code_reject_invalid_values(self):
         cases = (
             (validate_cnpj, "12.abc.345/01de-3x"),
@@ -163,7 +187,8 @@ class InputValidationTests(unittest.TestCase):
         self.assertIs(VALIDATORS["Busca por CNPJ"], validate_cnpj)
         self.assertIs(VALIDATORS["Busca Livro por ISNB"], validate_isbn)
         self.assertIs(VALIDATORS["Banco por codigo"], validate_bank_code)
-        self.assertNotIn("Corretoras por CNPJ", VALIDATORS)
+        self.assertIs(VALIDATORS["Corretoras por CNPJ"], validate_cnpj)
+        self.assertIs(VALIDATORS["Busca por Dominio BR"], validate_br_domain)
 
     def test_invalid_values(self):
         cases = (
@@ -183,6 +208,8 @@ class InputValidationTests(unittest.TestCase):
             ("Busca por CNPJ", "12ABC34501DE3X"),
             ("Busca Livro por ISNB", "123456789"),
             ("Banco por codigo", "1234"),
+            ("Corretoras por CNPJ", "12ABC34501DE3X"),
+            ("Busca por Dominio BR", "https://exemplo.br"),
         ):
             with self.subTest(operation=operation):
                 open_dict.reset_mock()
@@ -193,6 +220,7 @@ class InputValidationTests(unittest.TestCase):
                 app.print_text = Mock()
                 app.print_entry = Mock()
                 app.listbox_right = Mock()
+                app.api_address = "https://example.test/api"
 
                 app._get_to_quick_window(Mock(get=Mock(return_value=value)))
 
