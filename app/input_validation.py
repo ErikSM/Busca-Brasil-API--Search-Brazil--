@@ -95,6 +95,20 @@ def validate_cptec_city_code(value):
     return value
 
 
+def validate_fipe_vehicle_type(value):
+    value = value.strip().lower()
+    if value not in ("", "carros", "motos", "caminhoes"):
+        raise ValueError("Tipo de veiculo FIPE invalido. Informe carros, motos ou caminhoes.")
+    return value
+
+
+def validate_fipe_code(value):
+    value = value.strip()
+    if re.fullmatch(r"[0-9]{6}-[0-9]", value) is None:
+        raise ValueError("Codigo FIPE invalido. Informe apenas digitos e, opcionalmente, um hifen.")
+    return value
+
+
 VALIDATORS = {
     "Busca por CEP": validate_cep,
     "Busca por DDD": validate_ddd,
@@ -108,4 +122,6 @@ VALIDATORS = {
     "Clima em aeroportos por codigo": validate_cptec_airport_code,
     "Clima em cidade por codigo": validate_cptec_city_code,
     "Onda em cidade por codigo": validate_cptec_city_code,
+    "Marcas por caminhoes, carros ou moto": validate_fipe_vehicle_type,
+    "Preco de veiculo por codigo FIPE": validate_fipe_code,
 }

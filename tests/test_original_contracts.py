@@ -16,6 +16,8 @@ from app.input_validation import (
     validate_cnpj,
     validate_ddd,
     validate_holiday_year,
+    validate_fipe_code,
+    validate_fipe_vehicle_type,
     validate_isbn,
 )
 
@@ -194,6 +196,26 @@ class InputValidationTests(unittest.TestCase):
         self.assertNotIn("Cidades da CPTEC", VALIDATORS)
         self.assertNotIn("Clima em capitais", VALIDATORS)
 
+    def test_fipe_valid_values_normalization_and_registration(self):
+        self.assertEqual(validate_fipe_vehicle_type("  CARROS "), "carros")
+        self.assertEqual(validate_fipe_vehicle_type("Motos"), "motos")
+        self.assertEqual(validate_fipe_vehicle_type(" caminhoes "), "caminhoes")
+        self.assertEqual(validate_fipe_vehicle_type("  "), "")
+        self.assertEqual(validate_fipe_code(" 001004-9 "), "001004-9")
+        self.assertEqual(validate_fipe_code("000001-2"), "000001-2")
+        self.assertEqual(validate_fipe_code("123456-7"), "123456-7")
+        self.assertIs(VALIDATORS["Marcas por caminhoes, carros ou moto"], validate_fipe_vehicle_type)
+        self.assertIs(VALIDATORS["Preco de veiculo por codigo FIPE"], validate_fipe_code)
+        self.assertNotIn("Todas as tabelas FIPE", VALIDATORS)
+
+    def test_fipe_validators_reject_invalid_values(self):
+        for value in ("carro", "bicicleta", "carros motos"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_fipe_vehicle_type(value)
+        for value in ("", "   ", "12 34", "12-34-5", "-123", "123-", "abc", "12/3", "00012", "0010049", "001004-99", "00100-9", "１２３"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_fipe_code(value)
+
     def test_cnpj_isbn_and_bank_code_reject_invalid_values(self):
         cases = (
             (validate_cnpj, "12.abc.345/01de-3x"),
@@ -244,6 +266,8 @@ class InputValidationTests(unittest.TestCase):
             ("Clima em aeroportos por codigo", "AB1D"),
             ("Clima em cidade por codigo", "0"),
             ("Onda em cidade por codigo", "１２３"),
+            ("Marcas por caminhoes, carros ou moto", "bicicleta"),
+            ("Preco de veiculo por codigo FIPE", "00100 x-9"),
         ):
             with self.subTest(operation=operation):
                 open_dict.reset_mock()
@@ -290,6 +314,31 @@ class InputValidationTests(unittest.TestCase):
                 expected_url = addresses.cptec_meteorology[operation][0]
                 open_dict.assert_called_once_with(expected_url)
                 app._quick_window.assert_not_called()
+
+    @patch("app.App.open_dict")
+    def test_fipe_general_brands_empty_parameter_uses_search_flow(self, open_dict):
+        operation = "Marcas por caminhoes, carros ou moto"
+        open_dict.return_value = ["marca"]
+        app = App.__new__(App)
+        app.listbox_left = Mock()
+        app.listbox_left.get.return_value = operation
+        app.dict_selected = addresses.fipe_vehicles
+        app.clear = Mock()
+        app.print_text = Mock()
+        app.print_entry = Mock()
+        app.listbox_right = Mock()
+        app._quick_window = Mock()
+        app._get_to_quick_window = Mock()
+
+        app.search()
+
+        app._quick_window.assert_called_once_with(operation)
+        app._get_to_quick_window = App._get_to_quick_window.__get__(app, App)
+        app.field_toplevel = Mock()
+        app.captured_to_toplevel = None
+        app.selected_operation = operation
+        app._get_to_quick_window(Mock(get=Mock(return_value="  ")))
+        open_dict.assert_called_once_with(addresses.fipe_vehicles[operation][0], "")
 
 if __name__ == "__main__":
     unittest.main()
