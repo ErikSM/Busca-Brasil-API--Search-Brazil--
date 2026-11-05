@@ -1,4 +1,6 @@
 from tkinter import *
+from queue import Empty, Queue
+from threading import Thread
 
 from access.requests import open_dict
 from app.configuration import strings, colors
@@ -21,7 +23,14 @@ class App:
         self.field_toplevel = None
         self.captured_to_toplevel = None
 
+        self._query_results = None
+        self._query_selection = None
+        self._query_after_id = None
+        self._closed = False
+
         self.window = Tk()
+        self.window.protocol("WM_DELETE_WINDOW", self._close)
+        self.window.bind("<Destroy>", self._on_window_destroy, add="+")
         self.window.title('Busca Brasil')
         self.window.resizable(True, True)
         self.window.config(bg=self.color['purple'])
@@ -40,6 +49,7 @@ class App:
         y_axis = Scrollbar(self.window, orient=VERTICAL, command=self.listbox_left.yview)
         y_axis.grid(row=1, rowspan=10, column=0, sticky=N + S)
         self.listbox_left.config(yscrollcommand=y_axis.set)
+        self.listbox_left.bind("<<ListboxSelect>>", self._on_operation_selected)
 
         self.botao = Button(self.window, text='Select item', command=self.search)
         self.botao.grid(row=1, column=2)
@@ -68,6 +78,8 @@ class App:
         self.text.config(yscrollcommand=y_axis.set)
 
     def clear(self, text_field="all"):
+        if text_field in ("all", "listbox left"):
+            self._invalidate_query()
         self.entry.config(state=NORMAL)
 
         if text_field == "all":
@@ -97,6 +109,9 @@ class App:
         self.entry.config(state=DISABLED)
 
     def search(self):
+        if self._closed:
+            return
+        self._invalidate_query()
         selected = self.listbox_left.get(ANCHOR)
 
         try:
@@ -118,18 +133,74 @@ class App:
                 self.clear("entry")
                 self.print_entry(f'../{selected}>')
                 self.clear("listbox right")
-                try:
-                    dict_opened = open_dict(self.api_address)
-                except Exception as ex:
-                    self.clear("text")
-                    self.print_text(ex)
-                else:
-                    for i in dict_opened:
-                        self.listbox_right.insert(END, i)
+                self._start_query(self.api_address)
             else:
                 self.clear("entry")
                 self.print_entry(f'../{selected}>')
                 self._quick_window(selected)
+
+    def _start_query(self, address):
+        results = Queue()
+        self._query_results = results
+        self._query_selection = self.listbox_left.curselection()
+        Thread(target=self._fetch_query, args=(address, results), daemon=True).start()
+        self._query_after_id = self.window.after(100, self._poll_query, results)
+
+    @staticmethod
+    def _fetch_query(address, results):
+        # The worker receives only the URL and queue, never Tk widgets.
+        try:
+            result = open_dict(address)
+        except Exception as ex:
+            results.put((None, ex))
+        else:
+            results.put((result, None))
+
+    def _poll_query(self, results):
+        # A queue identifies one request, including repeated searches of the same item.
+        if self._closed or results is not self._query_results:
+            return
+        self._query_after_id = None
+        try:
+            result, error = results.get_nowait()
+        except Empty:
+            self._query_after_id = self.window.after(100, self._poll_query, results)
+            return
+
+        self._invalidate_query()
+        if error is not None:
+            self.clear("text")
+            self.print_text(error)
+        else:
+            for item in result:
+                self.listbox_right.insert(END, item)
+
+    def _invalidate_query(self):
+        self._query_results = None
+        self._query_selection = None
+        if self._query_after_id is not None:
+            try:
+                self.window.after_cancel(self._query_after_id)
+            except TclError:
+                # The root may already be in the process of being destroyed.
+                pass
+            self._query_after_id = None
+
+    def _on_operation_selected(self, event):
+        if self._query_results is not None and self.listbox_left.curselection() != self._query_selection:
+            self._invalidate_query()
+
+    def _close(self):
+        if self._closed:
+            return
+        self._closed = True
+        self._invalidate_query()
+        self.window.destroy()
+
+    def _on_window_destroy(self, event):
+        if event.widget is self.window:
+            self._closed = True
+            self._invalidate_query()
 
     def _quick_window(self, search):
         self.selected_operation = search

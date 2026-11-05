@@ -5,6 +5,7 @@ from access import addresses
 from access import requests as api_requests
 from app import menus
 from app.App import App
+from app_test_support import AppHarness
 from app.input_validation import (
     VALIDATORS,
     validate_bank_code,
@@ -332,7 +333,8 @@ class InputValidationTests(unittest.TestCase):
                 open_dict.reset_mock()
                 open_dict.return_value = ["ok"]
 
-                app = App.__new__(App)
+                gui = AppHarness()
+                app = gui.app
                 app.listbox_left = Mock()
                 app.listbox_left.get.return_value = operation
                 app.dict_selected = addresses.cptec_meteorology
@@ -342,7 +344,10 @@ class InputValidationTests(unittest.TestCase):
                 app.listbox_right = Mock()
                 app._quick_window = Mock()
 
-                app.search()
+                with patch("app.App.Thread", side_effect=gui.new_thread):
+                    app.search()
+                gui.finish_workers(self)
+                gui.run_next()
 
                 expected_url = addresses.cptec_meteorology[operation][0]
                 open_dict.assert_called_once_with(expected_url)
@@ -352,7 +357,7 @@ class InputValidationTests(unittest.TestCase):
     def test_fipe_general_brands_empty_parameter_uses_search_flow(self, open_dict):
         operation = "Marcas por caminhoes, carros ou moto"
         open_dict.return_value = ["marca"]
-        app = App.__new__(App)
+        app = AppHarness().app
         app.listbox_left = Mock()
         app.listbox_left.get.return_value = operation
         app.dict_selected = addresses.fipe_vehicles
@@ -383,7 +388,8 @@ class InputValidationTests(unittest.TestCase):
                 open_dict.reset_mock()
                 open_dict.return_value = ["ok"]
 
-                app = App.__new__(App)
+                gui = AppHarness()
+                app = gui.app
                 app.listbox_left = Mock()
                 app.listbox_left.get.return_value = operation
                 app.dict_selected = operations
@@ -393,7 +399,10 @@ class InputValidationTests(unittest.TestCase):
                 app.listbox_right = Mock()
                 app._quick_window = Mock()
 
-                app.search()
+                with patch("app.App.Thread", side_effect=gui.new_thread):
+                    app.search()
+                gui.finish_workers(self)
+                gui.run_next()
 
                 open_dict.assert_called_once_with(operations[operation][0])
                 app._quick_window.assert_not_called()
