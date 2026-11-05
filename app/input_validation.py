@@ -109,6 +109,22 @@ def validate_fipe_code(value):
     return value
 
 
+def validate_ncm_code(value):
+    value = value.strip()
+    if re.fullmatch(r"[0-9]{8}|[0-9]{4}\.[0-9]{2}\.[0-9]{2}", value) is None:
+        raise ValueError("Codigo NCM invalido. Informe oito digitos, com ou sem pontuacao.")
+    return value.replace(".", "")
+
+
+def validate_tax_acronym(value):
+    if any(unicodedata.category(ch) == "Cc" or ch in "/\\?#%" for ch in value):
+        raise ValueError("Sigla de taxa invalida. Informe o nome sem controles ou separadores de URL.")
+    value = value.strip()
+    if not value:
+        raise ValueError("Sigla de taxa invalida. Informe o nome sem controles ou separadores de URL.")
+    return value.upper()
+
+
 VALIDATORS = {
     "Busca por CEP": validate_cep,
     "Busca por DDD": validate_ddd,
@@ -124,4 +140,6 @@ VALIDATORS = {
     "Onda em cidade por codigo": validate_cptec_city_code,
     "Marcas por caminhoes, carros ou moto": validate_fipe_vehicle_type,
     "Preco de veiculo por codigo FIPE": validate_fipe_code,
+    "Produto por codigo": validate_ncm_code,
+    "Taxa por sigla": validate_tax_acronym,
 }

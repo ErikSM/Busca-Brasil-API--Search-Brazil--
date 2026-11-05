@@ -19,6 +19,8 @@ from app.input_validation import (
     validate_fipe_code,
     validate_fipe_vehicle_type,
     validate_isbn,
+    validate_ncm_code,
+    validate_tax_acronym,
 )
 
 
@@ -131,6 +133,35 @@ class OpenDictTests(unittest.TestCase):
 
 
 class InputValidationTests(unittest.TestCase):
+    def test_ncm_code_validation_normalization_and_registration(self):
+        self.assertEqual(validate_ncm_code(" 3305.10.00 "), "33051000")
+        self.assertEqual(validate_ncm_code("33051000"), "33051000")
+        self.assertEqual(validate_ncm_code(" 0101.21.00 "), "01012100")
+        self.assertEqual(validate_ncm_code("01012100"), "01012100")
+        self.assertIs(VALIDATORS["Produto por codigo"], validate_ncm_code)
+        self.assertNotIn("Produtos da NCM", VALIDATORS)
+
+    def test_ncm_code_rejects_invalid_values(self):
+        for value in (
+            "", "   ", "1234567", "123456789", "1234.5.00", "12345.10.00",
+            "1234.100.00", "1234.10.000", "1234-10-00", "1234/10/00",
+            "1234 10 00", "１２３４１０００", "1234.A0.00", "3305..00",
+        ):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_ncm_code(value)
+
+    def test_tax_acronym_normalization_and_registration(self):
+        for value in ("selic", "cdi", "ipca", "igp-m", "índice amplo"):
+            with self.subTest(value=value):
+                self.assertEqual(validate_tax_acronym(f"  {value}  "), value.upper())
+        self.assertIs(VALIDATORS["Taxa por sigla"], validate_tax_acronym)
+        self.assertNotIn("Taxas oficiais", VALIDATORS)
+
+    def test_tax_acronym_rejects_empty_controls_and_url_separators(self):
+        for value in ("", "   ", "SELIC\n", "CDI\x00", "IPCA/2", "IPCA\\2", "CDI?x=1", "CDI#x", "CDI%2F"):
+            with self.subTest(value=repr(value)), self.assertRaises(ValueError):
+                validate_tax_acronym(value)
+
     def test_valid_values_and_cep_normalization(self):
         self.assertEqual(validate_cep("12345-678"), "12345678")
         self.assertEqual(validate_cep("12345678"), "12345678")
@@ -268,6 +299,8 @@ class InputValidationTests(unittest.TestCase):
             ("Onda em cidade por codigo", "１２３"),
             ("Marcas por caminhoes, carros ou moto", "bicicleta"),
             ("Preco de veiculo por codigo FIPE", "00100 x-9"),
+            ("Produto por codigo", "3305.10.0"),
+            ("Taxa por sigla", "SELIC/../banks"),
         ):
             with self.subTest(operation=operation):
                 open_dict.reset_mock()
@@ -339,6 +372,31 @@ class InputValidationTests(unittest.TestCase):
         app.selected_operation = operation
         app._get_to_quick_window(Mock(get=Mock(return_value="  ")))
         open_dict.assert_called_once_with(addresses.fipe_vehicles[operation][0], "")
+
+    @patch("app.App.open_dict")
+    def test_parameterless_ncm_and_tax_operations_use_search(self, open_dict):
+        for operations, operation in (
+            (addresses.ncm_products, "Produtos da NCM"),
+            (addresses.taxes, "Taxas oficiais"),
+        ):
+            with self.subTest(operation=operation):
+                open_dict.reset_mock()
+                open_dict.return_value = ["ok"]
+
+                app = App.__new__(App)
+                app.listbox_left = Mock()
+                app.listbox_left.get.return_value = operation
+                app.dict_selected = operations
+                app.clear = Mock()
+                app.print_text = Mock()
+                app.print_entry = Mock()
+                app.listbox_right = Mock()
+                app._quick_window = Mock()
+
+                app.search()
+
+                open_dict.assert_called_once_with(operations[operation][0])
+                app._quick_window.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()
