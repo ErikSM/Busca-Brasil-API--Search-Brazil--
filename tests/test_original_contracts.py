@@ -305,9 +305,9 @@ class InputValidationTests(unittest.TestCase):
         ):
             with self.subTest(operation=operation):
                 open_dict.reset_mock()
-                app = App.__new__(App)
+                app = AppHarness().app
                 app.selected_operation = operation
-                app.field_toplevel = Mock()
+                dialog = app.field_toplevel = Mock()
                 app.clear = Mock()
                 app.print_text = Mock()
                 app.print_entry = Mock()
@@ -318,7 +318,7 @@ class InputValidationTests(unittest.TestCase):
 
                 open_dict.assert_not_called()
                 app.print_text.assert_called_once()
-                app.field_toplevel.destroy.assert_called_once()
+                dialog.destroy.assert_called_once()
 
     def test_cptec_rejects_controls_at_edges(self):
         for value in ("Rio\n", "\tRio", "Rio\t", "Rio\r"):
@@ -357,7 +357,8 @@ class InputValidationTests(unittest.TestCase):
     def test_fipe_general_brands_empty_parameter_uses_search_flow(self, open_dict):
         operation = "Marcas por caminhoes, carros ou moto"
         open_dict.return_value = ["marca"]
-        app = AppHarness().app
+        gui = AppHarness()
+        app = gui.app
         app.listbox_left = Mock()
         app.listbox_left.get.return_value = operation
         app.dict_selected = addresses.fipe_vehicles
@@ -375,7 +376,10 @@ class InputValidationTests(unittest.TestCase):
         app.field_toplevel = Mock()
         app.captured_to_toplevel = None
         app.selected_operation = operation
-        app._get_to_quick_window(Mock(get=Mock(return_value="  ")))
+        with patch("app.App.Thread", side_effect=gui.new_thread):
+            app._get_to_quick_window(Mock(get=Mock(return_value="  ")))
+        gui.finish_workers(self)
+        gui.run_next()
         open_dict.assert_called_once_with(addresses.fipe_vehicles[operation][0], "")
 
     @patch("app.App.open_dict")

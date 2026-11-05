@@ -22,9 +22,11 @@ class App:
 
         self.field_toplevel = None
         self.captured_to_toplevel = None
+        self._quick_selection = None
 
         self._query_results = None
         self._query_selection = None
+        self._query_with_complement = False
         self._query_after_id = None
         self._closed = False
 
@@ -80,6 +82,7 @@ class App:
     def clear(self, text_field="all"):
         if text_field in ("all", "listbox left"):
             self._invalidate_query()
+            self._close_quick_window()
         self.entry.config(state=NORMAL)
 
         if text_field == "all":
@@ -112,6 +115,7 @@ class App:
         if self._closed:
             return
         self._invalidate_query()
+        self._close_quick_window()
         selected = self.listbox_left.get(ANCHOR)
 
         try:
@@ -139,18 +143,21 @@ class App:
                 self.print_entry(f'../{selected}>')
                 self._quick_window(selected)
 
-    def _start_query(self, address):
+    def _start_query(self, address, complement=None):
+        self._invalidate_query()
         results = Queue()
         self._query_results = results
-        self._query_selection = self.listbox_left.curselection()
-        Thread(target=self._fetch_query, args=(address, results), daemon=True).start()
+        self._query_selection = (self.listbox_left.curselection() if complement is None
+                                 else self._quick_selection)
+        self._query_with_complement = complement is not None
+        Thread(target=self._fetch_query, args=(address, results, complement), daemon=True).start()
         self._query_after_id = self.window.after(100, self._poll_query, results)
 
     @staticmethod
-    def _fetch_query(address, results):
-        # The worker receives only the URL and queue, never Tk widgets.
+    def _fetch_query(address, results, complement=None):
+        # The worker receives only request data and the queue, never Tk widgets.
         try:
-            result = open_dict(address)
+            result = open_dict(address) if complement is None else open_dict(address, complement)
         except Exception as ex:
             results.put((None, ex))
         else:
@@ -167,8 +174,11 @@ class App:
             self._query_after_id = self.window.after(100, self._poll_query, results)
             return
 
+        with_complement = self._query_with_complement
         self._invalidate_query()
-        if error is not None:
+        if with_complement:
+            self._finish_quick_query(result, error)
+        elif error is not None:
             self.clear("text")
             self.print_text(error)
         else:
@@ -178,6 +188,7 @@ class App:
     def _invalidate_query(self):
         self._query_results = None
         self._query_selection = None
+        self._query_with_complement = False
         if self._query_after_id is not None:
             try:
                 self.window.after_cancel(self._query_after_id)
@@ -187,24 +198,55 @@ class App:
             self._query_after_id = None
 
     def _on_operation_selected(self, event):
-        if self._query_results is not None and self.listbox_left.curselection() != self._query_selection:
+        if self._closed:
+            return
+        selection = self.listbox_left.curselection()
+        # Selecting Entry text can take PRIMARY selection without choosing another operation.
+        if self.field_toplevel is not None and not selection:
+            return
+        if ((self._query_results is not None and selection != self._query_selection)
+                or (self.field_toplevel is not None and selection != self._quick_selection)):
             self._invalidate_query()
+            self._close_quick_window()
 
     def _close(self):
         if self._closed:
             return
         self._closed = True
         self._invalidate_query()
+        self._close_quick_window()
         self.window.destroy()
 
     def _on_window_destroy(self, event):
         if event.widget is self.window:
             self._closed = True
+            self.field_toplevel = None
+            self._quick_selection = None
+            self._invalidate_query()
+        elif event.widget is self.field_toplevel:
+            self.field_toplevel = None
+            self._quick_selection = None
             self._invalidate_query()
 
+    def _close_quick_window(self, dialog=None):
+        if dialog is not None and dialog is not self.field_toplevel:
+            return
+        dialog = self.field_toplevel
+        self.field_toplevel = None
+        self._quick_selection = None
+        if dialog is not None:
+            self._invalidate_query()
+            dialog.destroy()
+
     def _quick_window(self, search):
+        if self._closed:
+            return
+        self._close_quick_window()
         self.selected_operation = search
-        self.field_toplevel = Toplevel()
+        dialog = self.field_toplevel = Toplevel(self.window)
+        self._quick_selection = self.listbox_left.curselection()
+        dialog.protocol("WM_DELETE_WINDOW", lambda: self._close_quick_window(dialog))
+        dialog.bind("<Destroy>", self._on_window_destroy, add="+")
 
         self.field_toplevel.title(f"{search}")
         self.field_toplevel.resizable(False, False)
@@ -218,11 +260,13 @@ class App:
         entry.pack(side=LEFT)
 
         Button(self.field_toplevel, text="OK",
-               command=lambda: self._get_to_quick_window(entry)).pack(side=LEFT)
+               command=lambda: self._get_to_quick_window(entry, dialog)).pack(side=LEFT)
 
-        self.field_toplevel.mainloop()
-
-    def _get_to_quick_window(self, entry: Entry):
+    def _get_to_quick_window(self, entry: Entry, dialog=None):
+        if (self._closed or self.field_toplevel is None
+                or (dialog is not None and dialog is not self.field_toplevel)):
+            return
+        self._invalidate_query()
         self.captured_to_toplevel = entry.get()
 
         validator = VALIDATORS.get(self.selected_operation)
@@ -232,23 +276,25 @@ class App:
             except ValueError as ex:
                 self.clear("text")
                 self.print_text(str(ex))
-                self.field_toplevel.destroy()
+                self._close_quick_window()
                 return
 
+        self.clear("entry")
+        self.print_entry(f'../{self.selected_operation}>')
         self.print_entry(self.captured_to_toplevel)
 
         self.clear("listbox right")
 
-        try:
-            dict_opened = open_dict(self.api_address, self.captured_to_toplevel)
-        except Exception as ex:
+        self._start_query(self.api_address, self.captured_to_toplevel)
+
+    def _finish_quick_query(self, dict_opened, error):
+        if error is not None:
             self.clear("text")
-            self.print_text(f'Error:{ex}   \n\n-Em branco ou invalido')
+            self.print_text(f'Error:{error}   \n\n-Em branco ou invalido')
 
             self.clear("listbox right")
             self.listbox_right. insert(END, 'Erro de acesso')
 
-            self.field_toplevel.destroy()
         else:
             for i in dict_opened:
                 self.listbox_right.insert(END, i)
@@ -262,4 +308,4 @@ class App:
                         self.listbox_right.insert(END, dict_opened[i])
 
                 self.listbox_right.insert(END, '\n')
-            self.field_toplevel.destroy()
+        self._close_quick_window()
