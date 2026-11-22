@@ -1,10 +1,32 @@
 from tkinter import *
 from queue import Empty, Queue
 from threading import Thread
+from requests.exceptions import ConnectionError, Timeout, HTTPError, JSONDecodeError
 
 from access.requests import open_dict
 from app.configuration import strings, colors
 from app.input_validation import VALIDATORS
+
+
+def query_error_message(error):
+    if isinstance(error, Timeout):
+        return "Tempo limite excedido. Tente novamente."
+    if isinstance(error, ConnectionError):
+        return "Não foi possível conectar à internet. Verifique sua conexão e tente novamente."
+    if isinstance(error, JSONDecodeError):
+        return "O serviço retornou uma resposta JSON inválida. Tente novamente."
+    if isinstance(error, HTTPError):
+        status = error.response.status_code if error.response is not None else None
+        messages = {
+            400: "Solicitação inválida. Confira os dados informados.",
+            404: "Recurso não encontrado.",
+            429: "Limite de requisições atingido. Aguarde e tente novamente.",
+        }
+        if status in (500, 502, 503, 504):
+            return "Serviço temporariamente indisponível. Tente novamente mais tarde."
+        if status in messages:
+            return messages[status]
+    return "Ocorreu um erro inesperado. Tente novamente."
 
 
 class App:
@@ -118,6 +140,7 @@ class App:
             return
         self._invalidate_query()
         self._close_quick_window()
+        self.clear("listbox right")
         selected = self.listbox_left.get(ANCHOR)
 
         try:
@@ -126,7 +149,7 @@ class App:
             self.api_address = self.dict_selected[selected][0]
         except Exception as ex:
             self.clear("text")
-            self.print_text(f"Error:{ex}..\n\n-Item nao selecionado ou invalido")
+            self.print_text("Selecione um item válido para consultar.")
 
             self.clear("listbox right")
             self.listbox_right.insert(END, "Erro de acesso")
@@ -153,6 +176,7 @@ class App:
                                  else self._quick_selection)
         self._query_with_complement = complement is not None
         self._pending_query = (address, results, complement)
+        self.label_right.config(text="Aguardando disponibilidade para consultar...")
         self._dispatch_pending_query()
         self._query_after_id = self.window.after(100, self._poll_query, results)
 
@@ -164,6 +188,7 @@ class App:
         if len(self._query_workers) < 2:
             worker = Thread(target=self._fetch_query, args=self._pending_query, daemon=True)
             self._pending_query = None
+            self.label_right.config(text="Consultando...")
             worker.start()
             self._query_workers.append(worker)
 
@@ -191,16 +216,21 @@ class App:
 
         with_complement = self._query_with_complement
         self._invalidate_query()
+        self.label_right.config(text="Não foi possível concluir a consulta." if error is not None
+                                else "Consulta concluída." if result
+                                else "Nenhum resultado encontrado.")
         if with_complement:
             self._finish_quick_query(result, error)
         elif error is not None:
             self.clear("text")
-            self.print_text(error)
+            self.print_text(query_error_message(error))
         else:
-            for item in result:
+            for item in result or []:
                 self.listbox_right.insert(END, item)
 
     def _invalidate_query(self):
+        if self._query_results is not None and not self._closed:
+            self.label_right.config(text="Consulta cancelada.")
         self._pending_query = None
         self._query_results = None
         self._query_selection = None
@@ -283,6 +313,7 @@ class App:
                 or (dialog is not None and dialog is not self.field_toplevel)):
             return
         self._invalidate_query()
+        self.clear("listbox right")
         self.captured_to_toplevel = entry.get()
 
         validator = VALIDATORS.get(self.selected_operation)
@@ -292,6 +323,7 @@ class App:
             except ValueError as ex:
                 self.clear("text")
                 self.print_text(str(ex))
+                self.label_right.config(text="Entrada inválida.")
                 self._close_quick_window()
                 return
 
@@ -306,13 +338,13 @@ class App:
     def _finish_quick_query(self, dict_opened, error):
         if error is not None:
             self.clear("text")
-            self.print_text(f'Error:{error}   \n\n-Em branco ou invalido')
+            self.print_text(query_error_message(error))
 
             self.clear("listbox right")
             self.listbox_right. insert(END, 'Erro de acesso')
 
         else:
-            for i in dict_opened:
+            for i in dict_opened or []:
                 self.listbox_right.insert(END, i)
 
                 if type(dict_opened) == dict:

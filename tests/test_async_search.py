@@ -92,7 +92,7 @@ class AsyncSearchTests(unittest.TestCase):
         self.app.text.reset_mock()
         self.complete()
         self.app.text.delete.assert_called_once_with(1.0, "end")
-        self.app.text.insert.assert_called_once_with("end", failure)
+        self.app.text.insert.assert_called_once_with("end", "Ocorreu um erro inesperado. Tente novamente.")
         self.app.listbox_right.insert.assert_not_called()
 
     def test_delayed_http_does_not_block_and_polls_only_while_pending(self):
@@ -351,7 +351,7 @@ class AsyncSearchTests(unittest.TestCase):
         submit()
         self.app.text.reset_mock()
         self.complete()
-        self.app.text.insert.assert_called_once_with("end", "Error:bad status   \n\n-Em branco ou invalido")
+        self.app.text.insert.assert_called_once_with("end", "Ocorreu um erro inesperado. Tente novamente.")
         self.app.listbox_right.insert.assert_called_once_with("end", "Erro de acesso")
         dialog.destroy.assert_called_once()
 
