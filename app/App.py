@@ -6,6 +6,7 @@ from requests.exceptions import ConnectionError, Timeout, HTTPError, JSONDecodeE
 from access.requests import open_dict
 from app.configuration import strings, colors
 from app.input_validation import VALIDATORS
+from app.result_formatting import format_result
 
 
 def query_error_message(error):
@@ -216,8 +217,9 @@ class App:
 
         with_complement = self._query_with_complement
         self._invalidate_query()
+        resultado_vazio = result is None or (isinstance(result, (dict, list, str)) and not result)
         self.label_right.config(text="Não foi possível concluir a consulta." if error is not None
-                                else "Consulta concluída." if result
+                                else "Consulta concluída." if not resultado_vazio
                                 else "Nenhum resultado encontrado.")
         if with_complement:
             self._finish_quick_query(result, error)
@@ -225,8 +227,7 @@ class App:
             self.clear("text")
             self.print_text(query_error_message(error))
         else:
-            for item in result or []:
-                self.listbox_right.insert(END, item)
+            self._show_result(result)
 
     def _invalidate_query(self):
         if self._query_results is not None and not self._closed:
@@ -344,16 +345,9 @@ class App:
             self.listbox_right. insert(END, 'Erro de acesso')
 
         else:
-            for i in dict_opened or []:
-                self.listbox_right.insert(END, i)
-
-                if type(dict_opened) == dict:
-
-                    if type(dict_opened[i]) == list:
-                        for j in dict_opened[i]:
-                            self.listbox_right.insert(END, j)
-                    else:
-                        self.listbox_right.insert(END, dict_opened[i])
-
-                self.listbox_right.insert(END, '\n')
+            self._show_result(dict_opened)
         self._close_quick_window()
+
+    def _show_result(self, result):
+        for line in format_result(result):
+            self.listbox_right.insert(END, line)

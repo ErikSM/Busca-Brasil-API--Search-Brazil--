@@ -65,8 +65,12 @@ class AsyncSearchTests(unittest.TestCase):
         entry.get.return_value = value
         return dialog, entry, self.gui.buttons[-1].invoke
 
-    def test_list_and_dictionary_keep_existing_presentation_on_main_thread(self):
-        for response in ([{"nome": "Banco A"}, {"nome": "Banco B"}], {"code": 1, "name": "Banco A"}, []):
+    def test_list_and_dictionary_formatting_on_main_thread(self):
+        for response, expected in (
+            ([{"nome": "Banco A"}, {"nome": "Banco B"}], ["1.", "  nome: Banco A", "2.", "  nome: Banco B"]),
+            ({"code": 1, "name": "Banco A"}, ["code: 1", "name: Banco A"]),
+            ([], ["Lista vazia"]),
+        ):
             with self.subTest(response=response):
                 self.app.listbox_right.reset_mock()
 
@@ -81,7 +85,7 @@ class AsyncSearchTests(unittest.TestCase):
                 self.assertEqual(len(self.gui.pending), 1)
                 self.gui.run_next()
                 self.assertEqual(self.app.listbox_right.insert.call_args_list,
-                                 [call("end", item) for item in response])
+                                 [call("end", item) for item in expected])
                 self.assertFalse(self.gui.pending)
                 self.assertTrue(all(worker.daemon for worker in self.gui.threads))
 
@@ -109,7 +113,7 @@ class AsyncSearchTests(unittest.TestCase):
         self.app.print_text("interface continua ativa")
         release.set()
         self.complete()
-        self.app.listbox_right.insert.assert_called_once_with("end", "concluido")
+        self.app.listbox_right.insert.assert_called_once_with("end", "1. concluido")
 
     def test_older_success_or_error_cannot_replace_newer_result(self):
         for failure in (None, requests.exceptions.HTTPError("old failure")):
@@ -126,7 +130,7 @@ class AsyncSearchTests(unittest.TestCase):
                 self.assertEqual(len(self.gui.pending), 1)
                 release.set()
                 self.complete()
-                self.app.listbox_right.insert.assert_called_once_with("end", "novo")
+                self.app.listbox_right.insert.assert_called_once_with("end", "1. novo")
                 self.app.text.reset_mock()
                 self.app.listbox_right.reset_mock()
                 stale_callback(*stale_args)
@@ -144,7 +148,7 @@ class AsyncSearchTests(unittest.TestCase):
         self.select()
         release.set()
         self.complete()
-        self.app.listbox_right.insert.assert_called_once_with("end", "novo")
+        self.app.listbox_right.insert.assert_called_once_with("end", "1. novo")
 
     def test_changed_list_selection_invalidates_pending_request(self):
         fetch, started, release = self.delayed_response(["antigo"])
@@ -180,7 +184,7 @@ class AsyncSearchTests(unittest.TestCase):
         self.select()
         self.gui.emit(self.app.listbox_left, "<<ListboxSelect>>")
         self.complete()
-        self.app.listbox_right.insert.assert_called_once_with("end", "atual")
+        self.app.listbox_right.insert.assert_called_once_with("end", "1. atual")
 
     def test_category_change_invalidates_request_even_when_returning_to_category(self):
         fetch, started, release = self.delayed_response(["antigo"])
@@ -214,7 +218,7 @@ class AsyncSearchTests(unittest.TestCase):
         self.complete()
         dialog.destroy.assert_called_once()
         self.assertEqual(self.app.listbox_right.insert.call_args_list,
-                         [call("end", "nome"), call("end", "novo"), call("end", "\n")])
+                         [call("end", "nome: novo")])
 
     def test_invalid_search_invalidates_pending_result(self):
         fetch, started, release = self.delayed_response(["antigo"])
@@ -263,7 +267,7 @@ class AsyncSearchTests(unittest.TestCase):
             if binding.args[0] == "<Destroy>":
                 binding.args[1](SimpleNamespace(widget=self.app.listbox_right))
         self.complete()
-        self.app.listbox_right.insert.assert_called_once_with("end", "atual")
+        self.app.listbox_right.insert.assert_called_once_with("end", "1. atual")
 
     def test_parameter_form_uses_root_event_loop_and_replaces_previous_dialog(self):
         old, old_entry, old_submit = self.parameter_form()
@@ -325,12 +329,12 @@ class AsyncSearchTests(unittest.TestCase):
         dialog.destroy.assert_called_once()
         self.assertIsNone(self.app.field_toplevel)
 
-    def test_parameter_list_dictionary_and_empty_results_keep_presentation(self):
+    def test_parameter_list_dictionary_and_empty_results_are_formatted(self):
         for response, expected in (
-            ([{"nome": "Banco"}, "outro"], [{"nome": "Banco"}, "\n", "outro", "\n"]),
+            ([{"nome": "Banco"}, "outro"], ["1.", "  nome: Banco", "2. outro"]),
             ({"code": "001", "items": ["A", "B"], "nested": {"x": 1}},
-             ["code", "001", "\n", "items", "A", "B", "\n", "nested", {"x": 1}, "\n"]),
-            ([], []), ({}, []),
+             ["code: 001", "items:", "  1. A", "  2. B", "nested:", "  x: 1"]),
+            ([], ["Lista vazia"]), ({}, ["Objeto vazio"]),
         ):
             with self.subTest(response=response):
                 dialog, entry, submit = self.parameter_form()
@@ -395,7 +399,7 @@ class AsyncSearchTests(unittest.TestCase):
                 self.app.listbox_right.reset_mock()
                 self.gui.run_next()
                 self.assertEqual(self.app.listbox_right.insert.call_args_list,
-                                 [call("end", "new"), call("end", "\n")])
+                                 [call("end", "1. new")])
                 dialog.destroy.assert_called_once()
                 self.app.text.reset_mock()
                 self.app.listbox_right.reset_mock()
@@ -622,7 +626,7 @@ class AsyncSearchTests(unittest.TestCase):
         self.finish_worker(self.gui.threads[-1])
         self.gui.run_next()
         self.assertEqual(self.app.listbox_right.insert.call_args_list,
-                         [call("end", "100"), call("end", "\n")])
+                         [call("end", "1. 100")])
         dialog.destroy.assert_called_once()
         gates["002"][1].set()
         self.gui.finish_workers(self)
@@ -652,7 +656,7 @@ class AsyncSearchTests(unittest.TestCase):
         self.assertEqual(len(self.gui.threads), 3)
         self.assertEqual(self.open_dict.call_count, 3)
         self.assertEqual(activity["peak"], 2)
-        self.app.listbox_right.insert.assert_called_once_with("end", latest_url)
+        self.app.listbox_right.insert.assert_called_once_with("end", "1. " + latest_url)
 
     def test_pending_query_is_discarded_on_category_selection_dialog_close_or_invalid_input(self):
         for change in ("category", "selection", "dialog", "invalid input"):
@@ -695,7 +699,7 @@ class AsyncSearchTests(unittest.TestCase):
         self.gui.run_next()
         self.app.text.insert.assert_not_called()
         self.assertEqual(self.app.listbox_right.insert.call_args_list,
-                         [call("end", "003"), call("end", "\n")])
+                         [call("end", "1. 003")])
         gates["002"][1].set()
         self.gui.finish_workers(self)
         self.assertEqual(activity["peak"], 2)
@@ -717,7 +721,7 @@ class AsyncSearchTests(unittest.TestCase):
         self.complete()
         self.assertEqual([item.args[1] for item in self.open_dict.call_args_list], ["001", "002", "004"])
         self.assertEqual(self.app.listbox_right.insert.call_args_list,
-                         [call("end", "004"), call("end", "\n")])
+                         [call("end", "1. 004")])
         self.assertEqual(activity["peak"], 2)
 
     def shutdown_saturated_requests(self, external=False):
@@ -749,3 +753,48 @@ class AsyncSearchTests(unittest.TestCase):
 
     def test_external_destroy_with_two_active_and_one_pending_request_does_not_wait(self):
         self.shutdown_saturated_requests(external=True)
+
+
+class FormattingIntegrationTests(AsyncSearchTests):
+    def test_same_nested_result_in_both_query_paths(self):
+        response = {"ação": [{"ativo": False, "valor": None}], "total": 0}
+        expected = ["ação:", "  1.", "    ativo: Não", "    valor: Não informado", "total: 0"]
+        for parameterized in (False, True):
+            with self.subTest(parameterized=parameterized):
+                self.open_dict.return_value = response
+                self.app.listbox_right.reset_mock()
+                if parameterized:
+                    dialog, entry, submit = self.parameter_form()
+                    submit()
+                else:
+                    self.select()
+                self.app.label_right.config.assert_called_with(text="Consultando...")
+                self.gui.finish_workers(self)
+                self.app.listbox_right.insert.assert_not_called()
+                self.complete()
+                self.assertEqual(self.app.listbox_right.insert.call_args_list,
+                                 [call("end", line) for line in expected])
+                self.app.label_right.config.assert_called_with(text="Consulta concluída.")
+
+    def test_scalar_results_in_both_query_paths(self):
+        for value, expected in [(False, "Não"), (0, "0"), (None, "Não informado"), ("Olá", "Olá")]:
+            for parameterized in (False, True):
+                with self.subTest(value=value, parameterized=parameterized):
+                    self.open_dict.return_value = value
+                    self.app.listbox_right.reset_mock()
+                    if parameterized:
+                        dialog, entry, submit = self.parameter_form()
+                        submit()
+                    else:
+                        self.select()
+                    self.complete()
+                    self.app.listbox_right.insert.assert_called_once_with("end", expected)
+                    self.app.label_right.config.assert_called_with(
+                        text="Consulta concluída." if value is not None else "Nenhum resultado encontrado.")
+
+
+def load_tests(loader, tests, pattern):
+    suite = loader.loadTestsFromTestCase(AsyncSearchTests)
+    for name in ("test_same_nested_result_in_both_query_paths", "test_scalar_results_in_both_query_paths"):
+        suite.addTest(FormattingIntegrationTests(name))
+    return suite
