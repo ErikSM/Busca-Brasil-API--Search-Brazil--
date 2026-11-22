@@ -1,5 +1,5 @@
 import unittest
-from threading import Event, get_ident
+from threading import Event, Lock, get_ident
 from types import SimpleNamespace
 from unittest.mock import call, patch
 
@@ -547,3 +547,205 @@ class AsyncSearchTests(unittest.TestCase):
 
     def test_external_root_destruction_during_parameter_request_leaves_no_dialogs(self):
         self.shutdown_parameter_query(external=True)
+
+    def controlled_requests(self, keys, failures=None):
+        gates = {key: (Event(), Event()) for key in keys}
+        activity = {"active": 0, "peak": 0}
+        lock = Lock()
+        for started, release in gates.values():
+            self.addCleanup(release.set)
+
+        def fetch(address, parameter=None):
+            self.assertNotEqual(get_ident(), self.main_thread)
+            key = address if parameter is None else parameter
+            started, release = gates[key]
+            with lock:
+                activity["active"] += 1
+                activity["peak"] = max(activity["peak"], activity["active"])
+            started.set()
+            try:
+                if not release.wait(timeout=5):
+                    raise AssertionError("Test did not release controlled request")
+                if failures and key in failures:
+                    raise failures[key]
+                return [key]
+            finally:
+                with lock:
+                    activity["active"] -= 1
+
+        self.open_dict.side_effect = fetch
+        return gates, activity
+
+    def finish_worker(self, worker):
+        worker.join(timeout=5)
+        self.assertFalse(worker.is_alive())
+
+    def saturated_parameter_requests(self, failures=None):
+        gates, activity = self.controlled_requests(("001", "002", "003", "004"), failures)
+        dialog, entry, submit = self.parameter_form("001")
+        submit()
+        self.assertTrue(gates["001"][0].wait(timeout=5))
+        entry.get.return_value = "002"
+        submit()
+        self.assertTrue(gates["002"][0].wait(timeout=5))
+        workers = self.gui.threads[-2:]
+        entry.get.return_value = "003"
+        submit()
+        self.assertEqual(len(self.gui.pending), 1)
+        self.assertEqual(self.open_dict.call_count, 2)
+        return dialog, entry, submit, gates, activity, workers
+
+    def test_rapid_queries_limit_workers_and_run_only_latest_pending_parameter(self):
+        keys = [f"{number:03}" for number in range(1, 101)]
+        gates, activity = self.controlled_requests(keys)
+        dialog, entry, submit = self.parameter_form()
+        for key in keys:
+            entry.get.return_value = key
+            submit()
+            if key in ("001", "002"):
+                self.assertTrue(gates[key][0].wait(timeout=5))
+        self.assertEqual(len(self.gui.threads), 2)
+        self.assertEqual(self.open_dict.call_count, 2)
+        self.assertEqual(activity["peak"], 2)
+        self.assertEqual(len(self.gui.pending), 1)
+        self.app.print_text("interface ativa com limite ocupado")
+        gates["001"][1].set()
+        self.finish_worker(self.gui.threads[0])
+        self.gui.run_next()
+        self.assertTrue(gates["100"][0].wait(timeout=5))
+        self.assertEqual(len(self.gui.threads), 3)
+        self.assertEqual([item.args[1] for item in self.open_dict.call_args_list], ["001", "002", "100"])
+        self.gui.run_next()
+        self.assertEqual(len(self.gui.pending), 1)
+        self.assertEqual(len(self.gui.threads), 3)
+        gates["100"][1].set()
+        self.finish_worker(self.gui.threads[-1])
+        self.gui.run_next()
+        self.assertEqual(self.app.listbox_right.insert.call_args_list,
+                         [call("end", "100"), call("end", "\n")])
+        dialog.destroy.assert_called_once()
+        gates["002"][1].set()
+        self.gui.finish_workers(self)
+        self.assertEqual(activity["peak"], 2)
+        self.assertEqual(self.open_dict.call_count, 3)
+        self.assertFalse(self.gui.pending)
+        self.assertTrue(all(worker.daemon for worker in self.gui.threads))
+
+    def test_latest_parameterless_request_uses_same_concurrency_limit(self):
+        operations = [(catalog, operation, definition[0])
+                      for catalog, _ in menus.menus_list.values()
+                      for operation, definition in catalog.items() if not definition[1]]
+        gates, activity = self.controlled_requests([url for _, _, url in operations])
+        for index, (catalog, operation, url) in enumerate(operations):
+            self.select(operation, catalog)
+            if index < 2:
+                self.assertTrue(gates[url][0].wait(timeout=5))
+        self.assertEqual(len(self.gui.threads), 2)
+        for _, _, url in operations[:2]:
+            gates[url][1].set()
+        self.gui.finish_workers(self)
+        self.gui.run_next()
+        latest_url = operations[-1][2]
+        self.assertTrue(gates[latest_url][0].wait(timeout=5))
+        gates[latest_url][1].set()
+        self.complete()
+        self.assertEqual(len(self.gui.threads), 3)
+        self.assertEqual(self.open_dict.call_count, 3)
+        self.assertEqual(activity["peak"], 2)
+        self.app.listbox_right.insert.assert_called_once_with("end", latest_url)
+
+    def test_pending_query_is_discarded_on_category_selection_dialog_close_or_invalid_input(self):
+        for change in ("category", "selection", "dialog", "invalid input"):
+            with self.subTest(change=change):
+                self.open_dict.reset_mock()
+                dialog, entry, submit, gates, activity, workers = self.saturated_parameter_requests()
+                stale, args = next(iter(self.gui.pending.values()))
+                if change == "category":
+                    menus._select_menu(self.app, menus.menus_list["Taxes"])
+                elif change == "selection":
+                    self.app.listbox_left.curselection.return_value = (0,)
+                    self.gui.emit(self.app.listbox_left, "<<ListboxSelect>>")
+                elif change == "dialog":
+                    self.gui.close(dialog)
+                else:
+                    entry.get.return_value = "invalid"
+                    submit()
+                self.assertFalse(self.gui.pending)
+                dialog.destroy.assert_called_once()
+                for key in ("001", "002"):
+                    gates[key][1].set()
+                self.gui.finish_workers(self)
+                self.app.listbox_right.reset_mock()
+                stale(*args)
+                self.assertEqual(self.open_dict.call_count, 2)
+                self.assertFalse(gates["003"][0].is_set())
+                self.app.listbox_right.insert.assert_not_called()
+                self.assertFalse(self.gui.pending)
+
+    def test_http_failure_releases_capacity_for_latest_pending_query(self):
+        failure = requests.exceptions.HTTPError("obsolete failure")
+        dialog, entry, submit, gates, activity, workers = self.saturated_parameter_requests({"001": failure})
+        gates["001"][1].set()
+        self.finish_worker(workers[0])
+        self.app.text.reset_mock()
+        self.gui.run_next()
+        self.assertTrue(gates["003"][0].wait(timeout=5))
+        gates["003"][1].set()
+        self.finish_worker(self.gui.threads[-1])
+        self.gui.run_next()
+        self.app.text.insert.assert_not_called()
+        self.assertEqual(self.app.listbox_right.insert.call_args_list,
+                         [call("end", "003"), call("end", "\n")])
+        gates["002"][1].set()
+        self.gui.finish_workers(self)
+        self.assertEqual(activity["peak"], 2)
+        self.assertFalse(self.gui.pending)
+
+    def test_new_query_replaces_pending_when_capacity_frees_before_poll(self):
+        dialog, entry, submit, gates, activity, workers = self.saturated_parameter_requests()
+        stale, args = next(iter(self.gui.pending.values()))
+        gates["001"][1].set()
+        self.finish_worker(workers[0])
+        entry.get.return_value = "004"
+        submit()
+        self.assertTrue(gates["004"][0].wait(timeout=5))
+        stale(*args)
+        self.assertEqual(len(self.gui.pending), 1)
+        self.assertFalse(gates["003"][0].is_set())
+        for key in ("002", "004"):
+            gates[key][1].set()
+        self.complete()
+        self.assertEqual([item.args[1] for item in self.open_dict.call_args_list], ["001", "002", "004"])
+        self.assertEqual(self.app.listbox_right.insert.call_args_list,
+                         [call("end", "004"), call("end", "\n")])
+        self.assertEqual(activity["peak"], 2)
+
+    def shutdown_saturated_requests(self, external=False):
+        dialog, entry, submit, gates, activity, workers = self.saturated_parameter_requests()
+        stale, args = next(iter(self.gui.pending.values()))
+        if external:
+            self.gui.window.destroy()
+        else:
+            self.gui.close()
+        self.assertTrue(self.gui.destroyed)
+        self.assertFalse(self.gui.pending)
+        self.assertFalse(self.gui.live_dialogs)
+        self.assertTrue(all(worker.is_alive() and worker.daemon for worker in workers))
+        for key in ("001", "002"):
+            self.assertFalse(gates[key][1].is_set())
+            gates[key][1].set()
+        self.gui.finish_workers(self)
+        self.app.text.reset_mock()
+        self.app.listbox_right.reset_mock()
+        stale(*args)
+        self.assertEqual(self.open_dict.call_count, 2)
+        self.assertFalse(gates["003"][0].is_set())
+        self.app.text.insert.assert_not_called()
+        self.app.listbox_right.insert.assert_not_called()
+        self.assertFalse(self.gui.pending)
+
+    def test_shutdown_with_two_active_and_one_pending_request_does_not_wait(self):
+        self.shutdown_saturated_requests()
+
+    def test_external_destroy_with_two_active_and_one_pending_request_does_not_wait(self):
+        self.shutdown_saturated_requests(external=True)

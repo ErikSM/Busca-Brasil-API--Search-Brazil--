@@ -28,6 +28,8 @@ class App:
         self._query_selection = None
         self._query_with_complement = False
         self._query_after_id = None
+        self._query_workers = []
+        self._pending_query = None
         self._closed = False
 
         self.window = Tk()
@@ -150,8 +152,20 @@ class App:
         self._query_selection = (self.listbox_left.curselection() if complement is None
                                  else self._quick_selection)
         self._query_with_complement = complement is not None
-        Thread(target=self._fetch_query, args=(address, results, complement), daemon=True).start()
+        self._pending_query = (address, results, complement)
+        self._dispatch_pending_query()
         self._query_after_id = self.window.after(100, self._poll_query, results)
+
+    def _dispatch_pending_query(self):
+        if self._closed or self._pending_query is None:
+            return
+        # Only the main thread manages slots; finished workers are never joined here.
+        self._query_workers = [worker for worker in self._query_workers if worker.is_alive()]
+        if len(self._query_workers) < 2:
+            worker = Thread(target=self._fetch_query, args=self._pending_query, daemon=True)
+            self._pending_query = None
+            worker.start()
+            self._query_workers.append(worker)
 
     @staticmethod
     def _fetch_query(address, results, complement=None):
@@ -168,6 +182,7 @@ class App:
         if self._closed or results is not self._query_results:
             return
         self._query_after_id = None
+        self._dispatch_pending_query()
         try:
             result, error = results.get_nowait()
         except Empty:
@@ -186,6 +201,7 @@ class App:
                 self.listbox_right.insert(END, item)
 
     def _invalidate_query(self):
+        self._pending_query = None
         self._query_results = None
         self._query_selection = None
         self._query_with_complement = False
