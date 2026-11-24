@@ -71,46 +71,66 @@ class App:
         self.window.resizable(True, True)
         self.window.config(bg=self.color['purple'])
 
-        self.label_left = Label(self.window, text=self.strings['label list left'],
+        self.window.columnconfigure(0, weight=1)
+        self.window.columnconfigure(1, weight=3)
+        self.window.rowconfigure(0, weight=3)
+        self.window.rowconfigure(1, weight=1)
+
+        self.operations_frame = Frame(self.window, bg=self.color['purple'])
+        self.operations_frame.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
+        self.operations_frame.columnconfigure(0, weight=1)
+        self.operations_frame.rowconfigure(2, weight=1)
+
+        self.results_frame = Frame(self.window, bg=self.color['purple'])
+        self.results_frame.grid(row=0, column=1, sticky="nsew", padx=4, pady=4)
+        self.results_frame.columnconfigure(0, weight=1)
+        self.results_frame.rowconfigure(1, weight=1)
+
+        self.information_frame = Frame(self.window, bg=self.color['purple'])
+        self.information_frame.grid(row=1, column=0, columnspan=2,
+                                    sticky="nsew", padx=4, pady=4)
+        self.information_frame.columnconfigure(0, weight=1)
+        self.information_frame.rowconfigure(0, weight=1)
+
+        self.label_left = Label(self.operations_frame, text=self.strings['label list left'],
                                 bg=self.color['purple'], fg=self.color['white'])
-        self.label_left.grid(row=0, column=1)
+        self.label_left.grid(row=0, column=0, columnspan=2)
 
-        self.entry = Entry(self.window, width=41, bd=10, state=DISABLED,
+        self.entry = Entry(self.operations_frame, width=41, bd=10, state=DISABLED,
                            bg=self.color['grey'], fg=self.color['white'])
-        self.entry.grid(row=1, column=1)
+        self.entry.grid(row=1, column=0, sticky="ew", pady=(0, 4))
 
-        self.listbox_left = Listbox(self.window, height=18, width=41, bd=10,
+        self.listbox_left = Listbox(self.operations_frame, height=18, width=41, bd=10,
                                     bg=self.color['grey'], fg=self.color['white'])
-        self.listbox_left.grid(row=2, rowspan=10, column=1)
-        y_axis = Scrollbar(self.window, orient=VERTICAL, command=self.listbox_left.yview)
-        y_axis.grid(row=1, rowspan=10, column=0, sticky=N + S)
+        self.listbox_left.grid(row=2, column=0, sticky="nsew")
+        y_axis = Scrollbar(self.operations_frame, orient=VERTICAL, command=self.listbox_left.yview)
+        y_axis.grid(row=2, column=1, sticky=N + S)
         self.listbox_left.config(yscrollcommand=y_axis.set)
         self.listbox_left.bind("<<ListboxSelect>>", self._on_operation_selected)
 
-        self.botao = Button(self.window, text='Select item', command=self.search)
-        self.botao.grid(row=1, column=2)
+        self.botao = Button(self.operations_frame, text='Select item', command=self.search)
+        self.botao.grid(row=3, column=0, columnspan=2, pady=(4, 0))
 
-        cont = 2
-        while cont < 10:
-            Button(self.window, text=(' ' * 20), state=DISABLED).grid(row=cont, column=2)
-            cont += 1
-
-        self.label_right = Label(self.window, text=self.strings['label list right'],
+        self.label_right = Label(self.results_frame, text=self.strings['label list right'],
                                  bg=self.color['purple'], fg=self.color['white'])
-        self.label_right.grid(row=0, column=3)
+        self.label_right.grid(row=0, column=0, columnspan=2)
 
-        self.listbox_right = Listbox(self.window, height=22, width=111, bd=10,
+        self.listbox_right = Listbox(self.results_frame, height=22, width=111, bd=10,
                                      bg=self.color['grey'], fg=self.color['white'])
-        self.listbox_right.grid(row=1, rowspan=10, column=3)
-        y_axis = Scrollbar(self.window, orient=VERTICAL, command=self.listbox_right.yview)
-        y_axis.grid(row=1, rowspan=10, column=4, sticky=N + S)
+        self.listbox_right.grid(row=1, column=0, sticky="nsew")
+        y_axis = Scrollbar(self.results_frame, orient=VERTICAL, command=self.listbox_right.yview)
+        y_axis.grid(row=1, column=1, sticky=N + S)
         self.listbox_right.config(yscrollcommand=y_axis.set)
+        self.results_x_scrollbar = Scrollbar(
+            self.results_frame, orient=HORIZONTAL, command=self.listbox_right.xview)
+        self.results_x_scrollbar.grid(row=2, column=0, sticky="ew")
+        self.listbox_right.config(xscrollcommand=self.results_x_scrollbar.set)
 
-        self.text = Text(self.window, height=10, width=145, bd=12,
+        self.text = Text(self.information_frame, height=10, width=145, bd=12,
                          bg=self.color['grey'], fg=self.color['white'])
-        self.text.grid(row=12, column=1, columnspan=4)
-        y_axis = Scrollbar(self.window, orient=VERTICAL, command=self.text.yview)
-        y_axis.grid(row=12, column=0, sticky=N + S)
+        self.text.grid(row=0, column=0, sticky="nsew")
+        y_axis = Scrollbar(self.information_frame, orient=VERTICAL, command=self.text.yview)
+        y_axis.grid(row=0, column=1, sticky=N + S)
         self.text.config(yscrollcommand=y_axis.set)
 
     def clear(self, text_field="all"):

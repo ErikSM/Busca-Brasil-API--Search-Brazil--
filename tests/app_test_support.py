@@ -31,7 +31,7 @@ class AppHarness:
         self.window.destroy.side_effect = self._destroy
         self.factories = {
             name: MainThreadMock(side_effect=lambda *args, **kwargs: MainThreadMock())
-            for name in ("Label", "Entry", "Listbox", "Scrollbar", "Button", "Text", "Toplevel")
+            for name in ("Label", "Entry", "Listbox", "Scrollbar", "Button", "Text", "Toplevel", "Frame")
         }
         self.factories["Tk"] = MainThreadMock(return_value=self.window)
         self.factories["Toplevel"].side_effect = self._toplevel
