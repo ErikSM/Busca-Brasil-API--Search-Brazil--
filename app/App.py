@@ -5,7 +5,7 @@ from time import perf_counter
 from requests.exceptions import ConnectionError, Timeout, HTTPError, JSONDecodeError
 
 from access.requests import open_dict
-from app.configuration import strings, colors
+from app.configuration import strings, colors, fonts
 from app.input_validation import VALIDATORS
 from app.result_formatting import iter_format_result
 
@@ -69,67 +69,100 @@ class App:
         self.window.bind("<Destroy>", self._on_window_destroy, add="+")
         self.window.title('Busca Brasil')
         self.window.resizable(True, True)
-        self.window.config(bg=self.color['purple'])
+        surface_style = dict(
+            bg=self.color['surface'], fg=self.color['text'], relief=FLAT,
+            highlightbackground=self.color['border'],
+            highlightcolor=self.color['accent'], highlightthickness=1,
+            selectbackground=self.color['accent'],
+            selectforeground=self.color['on_accent'])
+        scrollbar_style = dict(
+            bg=self.color['border'], activebackground=self.color['accent'],
+            troughcolor=self.color['surface'], bd=0, relief=FLAT,
+            highlightthickness=0)
+
+        self.window.config(bg=self.color['background'])
 
         self.window.columnconfigure(0, weight=1)
         self.window.columnconfigure(1, weight=3)
         self.window.rowconfigure(0, weight=3)
         self.window.rowconfigure(1, weight=1)
 
-        self.operations_frame = Frame(self.window, bg=self.color['purple'])
-        self.operations_frame.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
+        self.operations_frame = Frame(self.window, bg=self.color['panel'], padx=8, pady=8,
+                                      highlightbackground=self.color['border'], highlightthickness=1)
+        self.operations_frame.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
         self.operations_frame.columnconfigure(0, weight=1)
         self.operations_frame.rowconfigure(2, weight=1)
 
-        self.results_frame = Frame(self.window, bg=self.color['purple'])
-        self.results_frame.grid(row=0, column=1, sticky="nsew", padx=4, pady=4)
+        self.results_frame = Frame(self.window, bg=self.color['panel'], padx=8, pady=8,
+                                      highlightbackground=self.color['border'], highlightthickness=1)
+        self.results_frame.grid(row=0, column=1, sticky="nsew", padx=8, pady=8)
         self.results_frame.columnconfigure(0, weight=1)
         self.results_frame.rowconfigure(1, weight=1)
 
-        self.information_frame = Frame(self.window, bg=self.color['purple'])
+        self.information_frame = Frame(self.window, bg=self.color['panel'], padx=8, pady=8,
+                                      highlightbackground=self.color['border'], highlightthickness=1)
         self.information_frame.grid(row=1, column=0, columnspan=2,
-                                    sticky="nsew", padx=4, pady=4)
+                                    sticky="nsew", padx=8, pady=8)
         self.information_frame.columnconfigure(0, weight=1)
         self.information_frame.rowconfigure(0, weight=1)
 
         self.label_left = Label(self.operations_frame, text=self.strings['label list left'],
-                                bg=self.color['purple'], fg=self.color['white'])
+                                bg=self.color['panel'], fg=self.color['text'],
+                                font=fonts['title'], pady=8)
         self.label_left.grid(row=0, column=0, columnspan=2)
 
-        self.entry = Entry(self.operations_frame, width=41, bd=10, state=DISABLED,
-                           bg=self.color['grey'], fg=self.color['white'])
-        self.entry.grid(row=1, column=0, sticky="ew", pady=(0, 4))
+        self.entry = Entry(self.operations_frame, width=41, bd=0, state=DISABLED,
+                           font=fonts['controls'],
+                           disabledbackground=self.color['panel'],
+                           disabledforeground=self.color['secondary'],
+                           **surface_style)
+        self.entry.grid(row=1, column=0, sticky="ew", pady=(0, 8))
 
-        self.listbox_left = Listbox(self.operations_frame, height=18, width=41, bd=10,
-                                    bg=self.color['grey'], fg=self.color['white'])
+        self.listbox_left = Listbox(self.operations_frame, height=18, width=41, bd=0,
+                                    font=fonts['controls'],
+                                    **surface_style)
         self.listbox_left.grid(row=2, column=0, sticky="nsew")
-        y_axis = Scrollbar(self.operations_frame, orient=VERTICAL, command=self.listbox_left.yview)
+        y_axis = Scrollbar(self.operations_frame, orient=VERTICAL, command=self.listbox_left.yview,
+                           **scrollbar_style)
         y_axis.grid(row=2, column=1, sticky=N + S)
         self.listbox_left.config(yscrollcommand=y_axis.set)
         self.listbox_left.bind("<<ListboxSelect>>", self._on_operation_selected)
 
-        self.botao = Button(self.operations_frame, text='Select item', command=self.search)
-        self.botao.grid(row=3, column=0, columnspan=2, pady=(4, 0))
+        self.botao = Button(self.operations_frame, text='Consultar', command=self.search,
+                            font=fonts['controls'], bg=self.color['accent'],
+                            fg=self.color['on_accent'], activebackground=self.color['secondary'],
+                            activeforeground=self.color['on_accent'],
+                            highlightbackground=self.color['border'],
+                            highlightcolor=self.color['accent'], highlightthickness=2,
+                            bd=0, relief=FLAT, padx=16, pady=8)
+        self.botao.grid(row=3, column=0, columnspan=2, pady=(8, 0))
 
         self.label_right = Label(self.results_frame, text=self.strings['label list right'],
-                                 bg=self.color['purple'], fg=self.color['white'])
+                                 bg=self.color['panel'], fg=self.color['text'],
+                                font=fonts['title'], pady=8)
         self.label_right.grid(row=0, column=0, columnspan=2)
 
-        self.listbox_right = Listbox(self.results_frame, height=22, width=111, bd=10,
-                                     bg=self.color['grey'], fg=self.color['white'])
+        self.listbox_right = Listbox(self.results_frame, height=22, width=111, bd=0,
+                                     font=fonts['technical'],
+                                     **surface_style)
         self.listbox_right.grid(row=1, column=0, sticky="nsew")
-        y_axis = Scrollbar(self.results_frame, orient=VERTICAL, command=self.listbox_right.yview)
+        y_axis = Scrollbar(self.results_frame, orient=VERTICAL, command=self.listbox_right.yview,
+                           **scrollbar_style)
         y_axis.grid(row=1, column=1, sticky=N + S)
         self.listbox_right.config(yscrollcommand=y_axis.set)
         self.results_x_scrollbar = Scrollbar(
-            self.results_frame, orient=HORIZONTAL, command=self.listbox_right.xview)
+            self.results_frame, orient=HORIZONTAL, command=self.listbox_right.xview,
+                           **scrollbar_style)
         self.results_x_scrollbar.grid(row=2, column=0, sticky="ew")
         self.listbox_right.config(xscrollcommand=self.results_x_scrollbar.set)
 
-        self.text = Text(self.information_frame, height=10, width=145, bd=12,
-                         bg=self.color['grey'], fg=self.color['white'])
+        self.text = Text(self.information_frame, height=10, width=145, bd=0,
+                         font=fonts['technical'], padx=8, pady=8,
+                         insertbackground=self.color['text'],
+                         **surface_style)
         self.text.grid(row=0, column=0, sticky="nsew")
-        y_axis = Scrollbar(self.information_frame, orient=VERTICAL, command=self.text.yview)
+        y_axis = Scrollbar(self.information_frame, orient=VERTICAL, command=self.text.yview,
+                           **scrollbar_style)
         y_axis.grid(row=0, column=1, sticky=N + S)
         self.text.config(yscrollcommand=y_axis.set)
 
