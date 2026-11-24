@@ -14,6 +14,9 @@ class AsyncSearchTests(unittest.TestCase):
         self.gui = AppHarness()
         self.app = self.gui.app
         self.main_thread = get_ident()
+        self.display_clock = patch("app.App.perf_counter", return_value=0)
+        self.display_clock.start()
+        self.addCleanup(self.display_clock.stop)
         self.widget_patch = self.gui.patch_widgets()
         self.widget_patch.start()
         self.addCleanup(self.widget_patch.stop)

@@ -1,12 +1,13 @@
 from tkinter import *
 from queue import Empty, Queue
 from threading import Thread
+from time import perf_counter
 from requests.exceptions import ConnectionError, Timeout, HTTPError, JSONDecodeError
 
 from access.requests import open_dict
 from app.configuration import strings, colors
 from app.input_validation import VALIDATORS
-from app.result_formatting import format_result
+from app.result_formatting import iter_format_result
 
 
 def query_error_message(error):
@@ -32,6 +33,10 @@ def query_error_message(error):
 
 class App:
 
+    _RESULT_BATCH_SIZE = 100
+    _RESULT_TIME_BUDGET = 0.008
+    _RESULT_DELAY_MS = 1
+
     def __init__(self):
 
         self.color = colors
@@ -54,6 +59,10 @@ class App:
         self._query_workers = []
         self._pending_query = None
         self._closed = False
+        self._result_generation = 0
+        self._result_lines = None
+        self._result_selection = None
+        self._result_after_id = None
 
         self.window = Tk()
         self.window.protocol("WM_DELETE_WINDOW", self._close)
@@ -216,22 +225,22 @@ class App:
             return
 
         with_complement = self._query_with_complement
+        selection = self._query_selection
         self._invalidate_query()
-        resultado_vazio = result is None or (isinstance(result, (dict, list, str)) and not result)
-        self.label_right.config(text="Não foi possível concluir a consulta." if error is not None
-                                else "Consulta concluída." if not resultado_vazio
-                                else "Nenhum resultado encontrado.")
+        if error is not None:
+            self.label_right.config(text="Não foi possível concluir a consulta.")
         if with_complement:
-            self._finish_quick_query(result, error)
+            self._finish_quick_query(result, error, selection)
         elif error is not None:
             self.clear("text")
             self.print_text(query_error_message(error))
         else:
-            self._show_result(result)
+            self._show_result(result, selection)
 
     def _invalidate_query(self):
-        if self._query_results is not None and not self._closed:
+        if (self._query_results is not None or self._result_lines is not None) and not self._closed:
             self.label_right.config(text="Consulta cancelada.")
+        self._cancel_result()
         self._pending_query = None
         self._query_results = None
         self._query_selection = None
@@ -248,11 +257,12 @@ class App:
         if self._closed:
             return
         selection = self.listbox_left.curselection()
-        # Selecting Entry text can take PRIMARY selection without choosing another operation.
-        if self.field_toplevel is not None and not selection:
+        # Selecting parameter text or output can take PRIMARY selection.
+        if not selection and (self.field_toplevel is not None or self._result_lines is not None):
             return
         if ((self._query_results is not None and selection != self._query_selection)
-                or (self.field_toplevel is not None and selection != self._quick_selection)):
+                or (self.field_toplevel is not None and selection != self._quick_selection)
+                or (self._result_lines is not None and selection != self._result_selection)):
             self._invalidate_query()
             self._close_quick_window()
 
@@ -336,7 +346,9 @@ class App:
 
         self._start_query(self.api_address, self.captured_to_toplevel)
 
-    def _finish_quick_query(self, dict_opened, error):
+    def _finish_quick_query(self, dict_opened, error, selection=None):
+        # Closing the form invalidates queries; do it before starting display.
+        self._close_quick_window()
         if error is not None:
             self.clear("text")
             self.print_text(query_error_message(error))
@@ -345,9 +357,50 @@ class App:
             self.listbox_right. insert(END, 'Erro de acesso')
 
         else:
-            self._show_result(dict_opened)
-        self._close_quick_window()
+            self._show_result(dict_opened, selection)
 
-    def _show_result(self, result):
-        for line in format_result(result):
+    def _cancel_result(self):
+        self._result_generation += 1
+        self._result_lines = None
+        self._result_selection = None
+        if self._result_after_id is not None:
+            try:
+                self.window.after_cancel(self._result_after_id)
+            except TclError:
+                # Logical cancellation still protects an already dequeued callback.
+                pass
+            self._result_after_id = None
+
+    def _show_result(self, result, selection=None):
+        if self._closed:
+            return
+        self._cancel_result()
+        self.listbox_right.delete(0, END)
+        self._result_lines = iter_format_result(result)
+        self._result_selection = (self.listbox_left.curselection() if selection is None
+                                  else selection)
+        empty = result is None or (isinstance(result, (dict, list, str)) and not result)
+        final_status = "Nenhum resultado encontrado." if empty else "Consulta concluída."
+        self.label_right.config(text="Exibindo resultados...")
+        self._show_result_batch(self._result_generation, final_status)
+
+    def _show_result_batch(self, generation, final_status):
+        if (self._closed or generation != self._result_generation
+                or self._result_lines is None):
+            return
+        self._result_after_id = None
+        deadline = perf_counter() + self._RESULT_TIME_BUDGET
+        for _ in range(self._RESULT_BATCH_SIZE):
+            try:
+                line = next(self._result_lines)
+            except StopIteration:
+                self._result_lines = None
+                self._result_selection = None
+                self.label_right.config(text=final_status)
+                return
             self.listbox_right.insert(END, line)
+            # Cooperative budget: an individual line/insertion cannot be preempted.
+            if perf_counter() >= deadline:
+                break
+        self._result_after_id = self.window.after(
+            self._RESULT_DELAY_MS, self._show_result_batch, generation, final_status)
